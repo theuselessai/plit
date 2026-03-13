@@ -62,9 +62,22 @@ pub async fn run(dev: bool, foreground: bool) -> Result<()> {
     }
 
     if foreground {
-        run_foreground(&honcho_bin, &procfile_path, &env_path, &platform_dir, &pid_path).await
+        run_foreground(
+            &honcho_bin,
+            &procfile_path,
+            &env_path,
+            &platform_dir,
+            &pid_path,
+        )
+        .await
     } else {
-        run_background(&honcho_bin, &procfile_path, &env_path, &platform_dir, &pid_path)
+        run_background(
+            &honcho_bin,
+            &procfile_path,
+            &env_path,
+            &platform_dir,
+            &pid_path,
+        )
     }
 }
 

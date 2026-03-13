@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use dialoguer::Confirm;
 
 use super::config;
@@ -218,8 +218,7 @@ fn offer_dragonfly_download() -> Result<PrereqResult> {
             name: "redis-server",
             found: false,
             version: String::new(),
-            install_hint:
-                "Install Redis: build from source (`make && make install PREFIX=~/.local`), \
+            install_hint: "Install Redis: build from source (`make && make install PREFIX=~/.local`), \
                           or use DragonflyDB, or `podman run -d -p 6379:6379 redis`",
         });
     }
