@@ -6,7 +6,7 @@ Pipelit ecosystem CLI
 [![CI](https://github.com/theuselessai/plit/actions/workflows/ci.yml/badge.svg)](https://github.com/theuselessai/plit/actions)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-> **Linux only.** `plit` uses `bwrap` for sandboxing and does not run on macOS.
+**Supported platforms:** Linux (native), macOS (via Docker), Windows (via WSL2).
 
 ---
 
