@@ -9,7 +9,22 @@ use dialoguer::Confirm;
 
 use crate::output;
 
-pub async fn run() -> Result<()> {
+pub struct InitArgs {
+    pub non_interactive: bool,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub llm_provider: Option<String>,
+    pub api_key: Option<String>,
+    pub llm_model: Option<String>,
+    pub llm_base_url: Option<String>,
+    pub gateway_port: Option<u16>,
+    pub pipelit_port: Option<u16>,
+    pub managed_dragonfly: Option<bool>,
+    pub redis_url: Option<String>,
+    pub platform_base_url: Option<String>,
+}
+
+pub async fn run(args: InitArgs) -> Result<()> {
     output::status("plit init — setting up Pipelit + Gateway\n");
 
     // 1. Re-run detection
@@ -17,37 +32,48 @@ pub async fn run() -> Result<()> {
     let pipelit_exists = config::pipelit_dir()?.exists();
 
     if config_exists {
-        output::status("Existing installation detected.");
-        let reset = Confirm::new()
-            .with_prompt("Reset and reconfigure?")
-            .default(false)
-            .interact()?;
+        if args.non_interactive {
+            output::status("Existing installation detected — overwriting (non-interactive).");
+        } else {
+            output::status("Existing installation detected.");
+            let reset = Confirm::new()
+                .with_prompt("Reset and reconfigure?")
+                .default(false)
+                .interact()?;
 
-        if !reset {
-            output::status("Exiting. Your existing configuration is unchanged.");
-            return Ok(());
+            if !reset {
+                output::status("Exiting. Your existing configuration is unchanged.");
+                return Ok(());
+            }
         }
         output::status("");
     }
 
     // 2. Prereqs
     output::status("Checking prerequisites...");
-    let env = prereqs::check_all()?;
+    let env = prereqs::check_all(args.non_interactive, args.managed_dragonfly)?;
     output::status("");
 
     // 3. Clone + venv + deps
     output::status("Setting up Pipelit...");
 
     if pipelit_exists && !config_exists {
-        let reclone = Confirm::new()
-            .with_prompt("Pipelit directory already exists. Re-clone from scratch?")
-            .default(false)
-            .interact()?;
-
-        if reclone {
+        if args.non_interactive {
+            output::status("Re-cloning Pipelit from scratch (non-interactive).");
             let pipelit_dir = config::pipelit_dir()?;
             std::fs::remove_dir_all(&pipelit_dir)?;
             install::clone_pipelit().await?;
+        } else {
+            let reclone = Confirm::new()
+                .with_prompt("Pipelit directory already exists. Re-clone from scratch?")
+                .default(false)
+                .interact()?;
+
+            if reclone {
+                let pipelit_dir = config::pipelit_dir()?;
+                std::fs::remove_dir_all(&pipelit_dir)?;
+                install::clone_pipelit().await?;
+            }
         }
     } else {
         install::clone_pipelit().await?;
@@ -59,7 +85,7 @@ pub async fn run() -> Result<()> {
 
     // 4-13. Prompts (ports, admin, redis, base url, LLM)
     output::status("Configuration:");
-    let inputs = prompts::collect(&env).await?;
+    let inputs = prompts::collect(&env, &args).await?;
     output::status("");
 
     // 14. Generate tokens

@@ -50,7 +50,55 @@ enum Commands {
     Health,
 
     /// Interactive setup wizard — bootstrap Pipelit + Gateway from scratch
-    Init,
+    Init {
+        /// Skip all interactive prompts (for Docker/CI)
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Admin username (required in non-interactive mode)
+        #[arg(long)]
+        username: Option<String>,
+
+        /// Admin password (required in non-interactive mode)
+        #[arg(long)]
+        password: Option<String>,
+
+        /// LLM provider: openai, anthropic, gemini, ollama, openai-compatible
+        #[arg(long)]
+        llm_provider: Option<String>,
+
+        /// LLM API key (required except for ollama)
+        #[arg(long)]
+        api_key: Option<String>,
+
+        /// LLM model name (required in non-interactive mode)
+        #[arg(long)]
+        llm_model: Option<String>,
+
+        /// LLM base URL (required for ollama and openai-compatible)
+        #[arg(long)]
+        llm_base_url: Option<String>,
+
+        /// Gateway port (default: 8080 in non-interactive mode)
+        #[arg(long)]
+        gateway_port: Option<u16>,
+
+        /// Pipelit port (default: 8000 in non-interactive mode)
+        #[arg(long)]
+        pipelit_port: Option<u16>,
+
+        /// Use managed DragonflyDB (default: true in non-interactive mode)
+        #[arg(long)]
+        managed_dragonfly: Option<bool>,
+
+        /// Redis URL (default: redis://localhost:6399/0)
+        #[arg(long)]
+        redis_url: Option<String>,
+
+        /// Platform base URL (default: http://localhost:{pipelit-port})
+        #[arg(long)]
+        platform_base_url: Option<String>,
+    },
 
     /// Start the plit stack (gateway + Pipelit + workers)
     Start {
@@ -216,7 +264,36 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
 
-        Commands::Init => commands::init::run().await,
+        Commands::Init {
+            non_interactive,
+            username,
+            password,
+            llm_provider,
+            api_key,
+            llm_model,
+            llm_base_url,
+            gateway_port,
+            pipelit_port,
+            managed_dragonfly,
+            redis_url,
+            platform_base_url,
+        } => {
+            commands::init::run(commands::init::InitArgs {
+                non_interactive,
+                username,
+                password,
+                llm_provider,
+                api_key,
+                llm_model,
+                llm_base_url,
+                gateway_port,
+                pipelit_port,
+                managed_dragonfly,
+                redis_url,
+                platform_base_url,
+            })
+            .await
+        }
 
         Commands::Start { dev, foreground } => commands::start::run(dev, foreground).await,
 

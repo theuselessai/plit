@@ -24,7 +24,10 @@ struct PrereqResult {
     install_hint: &'static str,
 }
 
-pub fn check_all() -> Result<Environment> {
+pub fn check_all(
+    non_interactive: bool,
+    managed_dragonfly_arg: Option<bool>,
+) -> Result<Environment> {
     let container = detect_container();
     let in_container = container.is_some();
 
@@ -75,7 +78,7 @@ pub fn check_all() -> Result<Environment> {
         bail!("Missing required prerequisites. Install them and re-run `plit init`.");
     }
 
-    let managed_dragonfly = detect_and_setup_dragonfly()?;
+    let managed_dragonfly = detect_and_setup_dragonfly(non_interactive, managed_dragonfly_arg)?;
 
     let sandbox_mode = if in_container {
         output::status("  → sandbox mode: container");
@@ -85,7 +88,7 @@ pub fn check_all() -> Result<Environment> {
         output::status("  → sandbox mode: container (code execution is not sandboxed)");
         "container".to_string()
     } else {
-        detect_sandbox_mode()?
+        detect_sandbox_mode(non_interactive)?
     };
 
     Ok(Environment {
@@ -94,7 +97,10 @@ pub fn check_all() -> Result<Environment> {
     })
 }
 
-fn detect_and_setup_dragonfly() -> Result<bool> {
+fn detect_and_setup_dragonfly(
+    non_interactive: bool,
+    managed_dragonfly_arg: Option<bool>,
+) -> Result<bool> {
     let redis_found = check_binary("redis-server", "redis-server", &["--version"], "");
 
     let dragonfly_path = config::dragonfly_bin_path()?;
@@ -120,10 +126,19 @@ fn detect_and_setup_dragonfly() -> Result<bool> {
 
     output::status("");
 
-    let use_managed = Confirm::new()
-        .with_prompt("Use managed DragonflyDB? (plit will run it on port 6399)")
-        .default(true)
-        .interact()?;
+    let use_managed = if non_interactive {
+        let managed = managed_dragonfly_arg.unwrap_or(true);
+        output::status(&format!(
+            "  Using managed DragonflyDB: {} (non-interactive)",
+            managed
+        ));
+        managed
+    } else {
+        Confirm::new()
+            .with_prompt("Use managed DragonflyDB? (plit will run it on port 6399)")
+            .default(true)
+            .interact()?
+    };
 
     if !use_managed {
         return Ok(false);
@@ -256,7 +271,7 @@ fn get_dragonfly_version(path: &Path) -> String {
 /// - Binary exists but test fails → already inside a sandboxed env
 ///   (e.g. bwrap with Alpine rootfs, no CAP_SYS_ADMIN) → `"container"`
 /// - Binary not found → show install instructions and bail
-fn detect_sandbox_mode() -> Result<String> {
+fn detect_sandbox_mode(non_interactive: bool) -> Result<String> {
     match Command::new("bwrap")
         .args(["--ro-bind", "/", "/", "/bin/true"])
         .output()
@@ -267,12 +282,18 @@ fn detect_sandbox_mode() -> Result<String> {
             Ok("bwrap".to_string())
         }
         Ok(_) => {
-            // Binary exists but can't create namespaces — already sandboxed
             output::status("  ✓ already sandboxed (bwrap test failed — lacking privileges)");
             output::status("  → sandbox mode: container");
             Ok("container".to_string())
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if non_interactive {
+                output::status(
+                    "  ⚠ bwrap not found — using container sandbox mode (non-interactive)",
+                );
+                output::status("  → sandbox mode: container");
+                return Ok("container".to_string());
+            }
             output::status("  ✗ bwrap — not found");
             output::status("");
             output::status("Bubblewrap (bwrap) is required for code sandboxing.");
