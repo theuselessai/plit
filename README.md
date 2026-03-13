@@ -3,6 +3,7 @@
 Pipelit ecosystem CLI
 
 [![Crates.io](https://img.shields.io/crates/v/plit)](https://crates.io/crates/plit)
+[![GitHub Release](https://img.shields.io/github/v/release/theuselessai/plit?label=release)](https://github.com/theuselessai/plit/releases)
 [![CI](https://github.com/theuselessai/plit/actions/workflows/ci.yml/badge.svg)](https://github.com/theuselessai/plit/actions)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
