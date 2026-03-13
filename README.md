@@ -1,11 +1,15 @@
 # plit
 
-Pipelit ecosystem CLI
+<p align="center">
+  <strong>Pipelit ecosystem CLI</strong>
+</p>
 
-[![Crates.io](https://img.shields.io/crates/v/plit)](https://crates.io/crates/plit)
-[![GitHub Release](https://img.shields.io/github/v/release/theuselessai/plit?label=release)](https://github.com/theuselessai/plit/releases)
-[![CI](https://github.com/theuselessai/plit/actions/workflows/ci.yml/badge.svg)](https://github.com/theuselessai/plit/actions)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+<p align="center">
+  <a href="https://crates.io/crates/plit"><img src="https://img.shields.io/crates/v/plit.svg?style=flat-square" alt="crates.io" /></a>
+  <a href="https://github.com/theuselessai/plit/releases"><img src="https://img.shields.io/github/v/release/theuselessai/plit?label=release&style=flat-square" alt="Release" /></a>
+  <a href="https://github.com/theuselessai/plit/actions/workflows/ci.yml"><img src="https://github.com/theuselessai/plit/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" alt="License: Apache 2.0" /></a>
+</p>
 
 **Supported platforms:** Linux (native), macOS (via Docker), Windows (via WSL2).
 
