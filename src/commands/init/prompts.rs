@@ -6,6 +6,7 @@ use anyhow::{Context, Result, bail};
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use genai::adapter::AdapterKind;
 
+use super::prereqs::Environment;
 use crate::output;
 
 pub struct UserInputs {
@@ -21,7 +22,7 @@ pub struct UserInputs {
     pub llm_model: String,
 }
 
-pub async fn collect() -> Result<UserInputs> {
+pub async fn collect(env: &Environment) -> Result<UserInputs> {
     let theme = ColorfulTheme::default();
 
     let gateway_port = prompt_port(&theme, "Gateway port", 8080)?;
@@ -53,7 +54,13 @@ pub async fn collect() -> Result<UserInputs> {
         bail!("Admin password cannot be empty");
     }
 
-    let redis_url = prompt_redis_url(&theme)?;
+    let redis_url = if env.managed_dragonfly {
+        let url = "redis://localhost:6399/0".to_string();
+        output::status(&format!("  Using managed DragonflyDB: {}", url));
+        url
+    } else {
+        prompt_redis_url(&theme)?
+    };
 
     let platform_base_url: String = Input::with_theme(&theme)
         .with_prompt("Platform base URL")

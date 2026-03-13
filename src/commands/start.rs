@@ -51,7 +51,14 @@ pub async fn run(dev: bool, foreground: bool) -> Result<()> {
         );
     }
 
-    let procfile = generate_procfile(&gateway_bin, &config_json, &venv_bin, pipelit_port, dev);
+    let procfile = generate_procfile(
+        &gateway_bin,
+        &config_json,
+        &venv_bin,
+        &env_path,
+        pipelit_port,
+        dev,
+    );
     let procfile_path = config::config_dir()?.join("Procfile");
     std::fs::write(&procfile_path, &procfile)
         .with_context(|| format!("Failed to write {}", procfile_path.display()))?;
@@ -184,6 +191,7 @@ fn generate_procfile(
     gateway_bin: &std::path::Path,
     config_json: &std::path::Path,
     venv_bin: &std::path::Path,
+    env_path: &std::path::Path,
     pipelit_port: u16,
     dev: bool,
 ) -> String {
@@ -201,14 +209,13 @@ fn generate_procfile(
         format!("worker: {rq} worker-pool workflows -w worker_class.PipelitWorker -n 4"),
     ];
 
-    // Add DragonflyDB if the managed binary exists
-    if let Ok(dragonfly_path) = config::dragonfly_bin_path()
-        && dragonfly_path.exists()
+    if uses_managed_dragonfly(env_path)
+        && let Ok(dragonfly_path) = config::dragonfly_bin_path()
     {
         lines.insert(
             0,
             format!(
-                "redis: {} --logtostderr --port 6379",
+                "redis: {} --logtostderr --port 6399",
                 dragonfly_path.display()
             ),
         );
@@ -246,6 +253,15 @@ fn extract_pipelit_port(cfg: &serde_json::Value) -> Result<u16> {
 
 fn pid_file_path() -> Result<PathBuf> {
     Ok(config::data_dir()?.join("plit.pid"))
+}
+
+fn uses_managed_dragonfly(env_path: &std::path::Path) -> bool {
+    let Ok(content) = std::fs::read_to_string(env_path) else {
+        return false;
+    };
+    content
+        .lines()
+        .any(|line| line.starts_with("REDIS_URL=") && line.contains(":6399"))
 }
 
 fn is_running(pid_path: &std::path::Path) -> bool {

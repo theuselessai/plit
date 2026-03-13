@@ -14,6 +14,7 @@ use crate::output;
 
 pub struct Environment {
     pub sandbox_mode: String,
+    pub managed_dragonfly: bool,
 }
 
 struct PrereqResult {
@@ -31,7 +32,6 @@ pub fn check_all() -> Result<Environment> {
         output::status(&format!("  ✓ container detected ({})", ctype));
     }
 
-    // Non-redis prereqs
     let checks = vec![
         check_binary(
             "python3",
@@ -53,9 +53,6 @@ pub fn check_all() -> Result<Environment> {
         ),
     ];
 
-    // Handle redis/dragonfly separately
-    let redis_result = check_redis_or_dragonfly();
-
     let mut any_missing = false;
 
     for result in &checks {
@@ -63,22 +60,6 @@ pub fn check_all() -> Result<Environment> {
             output::status(&format!("  ✓ {} ({})", result.name, result.version));
         } else {
             output::status(&format!("  ✗ {} — not found", result.name));
-            any_missing = true;
-        }
-    }
-
-    // Display redis result
-    match &redis_result {
-        Ok(result) => {
-            if result.found {
-                output::status(&format!("  ✓ {} ({})", result.name, result.version));
-            } else {
-                output::status(&format!("  ✗ {} — not found", result.name));
-                any_missing = true;
-            }
-        }
-        Err(e) => {
-            output::status(&format!("  ✗ redis — error: {}", e));
             any_missing = true;
         }
     }
@@ -91,19 +72,10 @@ pub fn check_all() -> Result<Environment> {
                 output::status(&format!("  • {}: {}", result.name, result.install_hint));
             }
         }
-        if let Ok(result) = &redis_result
-            && !result.found
-        {
-            output::status(&format!("  • {}: {}", result.name, result.install_hint));
-        }
         bail!("Missing required prerequisites. Install them and re-run `plit init`.");
     }
 
-    // If redis_result was Err, we already set any_missing and bailed above won't reach here,
-    // but handle it for safety
-    if redis_result.is_err() {
-        bail!("Failed to check redis prerequisite.");
-    }
+    let managed_dragonfly = detect_and_setup_dragonfly()?;
 
     let sandbox_mode = if in_container {
         output::status("  → sandbox mode: container");
@@ -116,62 +88,61 @@ pub fn check_all() -> Result<Environment> {
         detect_sandbox_mode()?
     };
 
-    Ok(Environment { sandbox_mode })
+    Ok(Environment {
+        sandbox_mode,
+        managed_dragonfly,
+    })
 }
 
-/// Check for redis-server on PATH, then fall back to managed DragonflyDB binary,
-/// and finally offer to download DragonflyDB if neither is found.
-fn check_redis_or_dragonfly() -> Result<PrereqResult> {
-    // 1. Try redis-server on PATH
-    let redis = check_binary(
-        "redis-server",
-        "redis-server",
-        &["--version"],
-        "Install Redis: build from source (`make && make install PREFIX=~/.local`), \
-         or use DragonflyDB, or `podman run -d -p 6379:6379 redis`",
-    );
-    if redis.found {
-        return Ok(redis);
-    }
+fn detect_and_setup_dragonfly() -> Result<bool> {
+    let redis_found = check_binary("redis-server", "redis-server", &["--version"], "");
 
-    // 2. Check if managed DragonflyDB binary already exists
     let dragonfly_path = config::dragonfly_bin_path()?;
-    if dragonfly_path.exists() {
+    let dragonfly_exists = dragonfly_path.exists();
+
+    if redis_found.found {
+        output::status(&format!(
+            "  ✓ redis-server detected ({})",
+            redis_found.version
+        ));
+    } else {
+        output::status("  ✗ No redis-server detected on host");
+    }
+
+    if dragonfly_exists {
         let version = get_dragonfly_version(&dragonfly_path);
-        return Ok(PrereqResult {
-            name: "redis-server",
-            found: true,
-            version: format!("DragonflyDB {}", version),
-            install_hint: "",
-        });
+        output::status(&format!(
+            "  ✓ DragonflyDB detected at {} ({})",
+            dragonfly_path.display(),
+            version,
+        ));
     }
 
-    // 3. Offer to download DragonflyDB
-    offer_dragonfly_download()
-}
+    output::status("");
 
-/// Run the dragonfly binary with --version and extract the version string.
-fn get_dragonfly_version(path: &Path) -> String {
-    match Command::new(path).arg("--version").output() {
-        Ok(output) => {
-            let raw = if output.stdout.is_empty() {
-                String::from_utf8_lossy(&output.stderr).to_string()
-            } else {
-                String::from_utf8_lossy(&output.stdout).to_string()
-            };
-            raw.lines().next().unwrap_or("unknown").trim().to_string()
-        }
-        Err(_) => "unknown".to_string(),
+    let use_managed = Confirm::new()
+        .with_prompt("Use managed DragonflyDB? (plit will run it on port 6399)")
+        .default(true)
+        .interact()?;
+
+    if !use_managed {
+        return Ok(false);
     }
+
+    if dragonfly_exists {
+        return Ok(true);
+    }
+
+    download_dragonfly(&dragonfly_path)?;
+    Ok(true)
 }
 
-/// Detect architecture, query latest release, ask user, download + extract via curl+tar.
-fn offer_dragonfly_download() -> Result<PrereqResult> {
+fn download_dragonfly(dragonfly_path: &Path) -> Result<()> {
     let arch = match std::env::consts::ARCH {
         "x86_64" => "x86_64",
         "aarch64" => "aarch64",
         other => bail!(
-            "Unsupported architecture for DragonflyDB auto-download: {}. \
+            "Unsupported architecture for DragonflyDB: {}. \
              Install redis-server manually.",
             other
         ),
@@ -199,43 +170,21 @@ fn offer_dragonfly_download() -> Result<PrereqResult> {
         .as_str()
         .context("Could not find tag_name in GitHub release response")?;
 
-    output::status("");
-    output::status(&format!(
-        "  Redis not found. DragonflyDB {} is available for {}.",
-        version, arch
-    ));
-
-    let consent = Confirm::new()
-        .with_prompt(format!(
-            "Download DragonflyDB {} for {}? (~18 MB)",
-            version, arch
-        ))
-        .default(true)
-        .interact()?;
-
-    if !consent {
-        return Ok(PrereqResult {
-            name: "redis-server",
-            found: false,
-            version: String::new(),
-            install_hint: "Install Redis: build from source (`make && make install PREFIX=~/.local`), \
-                          or use DragonflyDB, or `podman run -d -p 6379:6379 redis`",
-        });
-    }
-
     let url = format!(
         "https://github.com/dragonflydb/dragonfly/releases/download/{}/dragonfly-{}.tar.gz",
         version, arch
     );
 
-    let dragonfly_path = config::dragonfly_bin_path()?;
     let config_dir = config::config_dir()?;
     std::fs::create_dir_all(&config_dir)
         .with_context(|| format!("Failed to create directory: {}", config_dir.display()))?;
 
     let target_name = format!("dragonfly-{}", arch);
 
-    output::status("  Downloading and extracting...");
+    output::status(&format!(
+        "  Downloading DragonflyDB {} for {}...",
+        version, arch
+    ));
 
     let status = Command::new("sh")
         .args([
@@ -255,7 +204,7 @@ fn offer_dragonfly_download() -> Result<PrereqResult> {
     }
 
     let extracted_path = config_dir.join(&target_name);
-    std::fs::rename(&extracted_path, &dragonfly_path).with_context(|| {
+    std::fs::rename(&extracted_path, dragonfly_path).with_context(|| {
         format!(
             "Failed to rename {} to {}",
             extracted_path.display(),
@@ -263,11 +212,10 @@ fn offer_dragonfly_download() -> Result<PrereqResult> {
         )
     })?;
 
-    // Set executable permissions
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&dragonfly_path, std::fs::Permissions::from_mode(0o755))
+        std::fs::set_permissions(dragonfly_path, std::fs::Permissions::from_mode(0o755))
             .with_context(|| {
                 format!(
                     "Failed to set executable permissions on {}",
@@ -276,21 +224,29 @@ fn offer_dragonfly_download() -> Result<PrereqResult> {
             })?;
     }
 
-    let version_str = get_dragonfly_version(&dragonfly_path);
-
+    let version_str = get_dragonfly_version(dragonfly_path);
     output::status(&format!(
-        "  Done. Installed to {}",
+        "  ✓ Installed DragonflyDB ({}) to {}",
+        version_str,
         dragonfly_path.display()
     ));
 
-    Ok(PrereqResult {
-        name: "redis-server",
-        found: true,
-        version: format!("DragonflyDB {}", version_str),
-        install_hint: "",
-    })
+    Ok(())
 }
 
+fn get_dragonfly_version(path: &Path) -> String {
+    match Command::new(path).arg("--version").output() {
+        Ok(out) => {
+            let raw = if out.stdout.is_empty() {
+                String::from_utf8_lossy(&out.stderr).to_string()
+            } else {
+                String::from_utf8_lossy(&out.stdout).to_string()
+            };
+            raw.lines().next().unwrap_or("unknown").trim().to_string()
+        }
+        Err(_) => "unknown".to_string(),
+    }
+}
 /// Determine sandbox mode when not in a known container.
 ///
 /// Attempts a bwrap test run (`bwrap --ro-bind / / true`) to check if

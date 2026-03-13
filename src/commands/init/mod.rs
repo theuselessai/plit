@@ -59,7 +59,7 @@ pub async fn run() -> Result<()> {
 
     // 4-13. Prompts (ports, admin, redis, base url, LLM)
     output::status("Configuration:");
-    let inputs = prompts::collect().await?;
+    let inputs = prompts::collect(&env).await?;
     output::status("");
 
     // 14. Generate tokens

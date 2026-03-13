@@ -108,6 +108,7 @@ DATABASE_URL=sqlite:///{db_path}
 SECRET_KEY={secret_key}
 DEBUG=false
 ALLOWED_HOSTS=localhost,127.0.0.1
+REDIS_URL={redis_url}
 
 # Gateway integration
 GATEWAY_ENABLED=true
@@ -118,6 +119,7 @@ GATEWAY_INBOUND_TOKEN={inbound_token}
 ",
         db_path = db_path.display(),
         secret_key = secret_key,
+        redis_url = inputs.redis_url,
         gw_port = inputs.gateway_port,
         admin_token = tokens.admin_token,
         send_token = tokens.send_token,
