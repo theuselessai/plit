@@ -91,10 +91,10 @@ pub fn check_all() -> Result<Environment> {
                 output::status(&format!("  • {}: {}", result.name, result.install_hint));
             }
         }
-        if let Ok(result) = &redis_result {
-            if !result.found {
-                output::status(&format!("  • {}: {}", result.name, result.install_hint));
-            }
+        if let Ok(result) = &redis_result
+            && !result.found
+        {
+            output::status(&format!("  • {}: {}", result.name, result.install_hint));
         }
         bail!("Missing required prerequisites. Install them and re-run `plit init`.");
     }

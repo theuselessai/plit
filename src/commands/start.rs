@@ -189,16 +189,16 @@ fn generate_procfile(
     ];
 
     // Add DragonflyDB if the managed binary exists
-    if let Ok(dragonfly_path) = config::dragonfly_bin_path() {
-        if dragonfly_path.exists() {
-            lines.insert(
-                0,
-                format!(
-                    "redis: {} --logtostderr --port 6379",
-                    dragonfly_path.display()
-                ),
-            );
-        }
+    if let Ok(dragonfly_path) = config::dragonfly_bin_path()
+        && dragonfly_path.exists()
+    {
+        lines.insert(
+            0,
+            format!(
+                "redis: {} --logtostderr --port 6379",
+                dragonfly_path.display()
+            ),
+        );
     }
 
     if dev {
