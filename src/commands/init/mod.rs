@@ -122,7 +122,7 @@ pub async fn run(args: InitArgs) -> Result<()> {
 
     // 19. Write config.json (with credential route from fixture)
     output::status("Writing gateway configuration...");
-    config::write_gateway_config(&inputs, &shared_tokens, &fixture)?;
+    config::write_gateway_config(&inputs, &shared_tokens, &fixture, &env)?;
     output::status("");
 
     // 19b. Drop management markers so uninstall can detect plit-managed dirs
