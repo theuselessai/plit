@@ -1,12 +1,12 @@
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use tokio::process::Command;
 
 use super::init::config;
 use crate::output;
 
-pub async fn run(dev: bool) -> Result<()> {
+pub async fn run(dev: bool, foreground: bool) -> Result<()> {
     let pid_path = pid_file_path()?;
     if is_running(&pid_path) {
         bail!(
@@ -61,23 +61,37 @@ pub async fn run(dev: bool) -> Result<()> {
         output::status("  (dev mode — frontend dev server included)");
     }
 
-    let mut child = Command::new(&honcho_bin)
+    if foreground {
+        run_foreground(&honcho_bin, &procfile_path, &env_path, &platform_dir, &pid_path).await
+    } else {
+        run_background(&honcho_bin, &procfile_path, &env_path, &platform_dir, &pid_path)
+    }
+}
+
+async fn run_foreground(
+    honcho_bin: &PathBuf,
+    procfile_path: &PathBuf,
+    env_path: &PathBuf,
+    platform_dir: &PathBuf,
+    pid_path: &PathBuf,
+) -> Result<()> {
+    let mut child = tokio::process::Command::new(honcho_bin)
         .args(["-f"])
-        .arg(&procfile_path)
+        .arg(procfile_path)
         .args(["-e"])
-        .arg(&env_path)
+        .arg(env_path)
         .arg("start")
-        .current_dir(&platform_dir)
+        .current_dir(platform_dir)
         .spawn()
         .context("Failed to start honcho")?;
 
     if let Some(pid) = child.id() {
-        let _ = std::fs::write(&pid_path, pid.to_string());
+        let _ = std::fs::write(pid_path, pid.to_string());
     }
 
     let status = child.wait().await?;
 
-    let _ = std::fs::remove_file(&pid_path);
+    let _ = std::fs::remove_file(pid_path);
 
     if !status.success() {
         if status.code().is_none() {
@@ -87,6 +101,70 @@ pub async fn run(dev: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(unix)]
+fn run_background(
+    honcho_bin: &PathBuf,
+    procfile_path: &PathBuf,
+    env_path: &PathBuf,
+    platform_dir: &PathBuf,
+    pid_path: &PathBuf,
+) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    let log_path = config::log_path()?;
+    let data_dir = config::data_dir()?;
+    std::fs::create_dir_all(&data_dir)
+        .with_context(|| format!("Failed to create data directory: {}", data_dir.display()))?;
+
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .with_context(|| format!("Failed to open log file: {}", log_path.display()))?;
+
+    let log_file_err = log_file
+        .try_clone()
+        .context("Failed to clone log file handle")?;
+
+    let child = unsafe {
+        std::process::Command::new(honcho_bin)
+            .args(["-f"])
+            .arg(procfile_path)
+            .args(["-e"])
+            .arg(env_path)
+            .arg("start")
+            .current_dir(platform_dir)
+            .stdout(log_file)
+            .stderr(log_file_err)
+            .pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            })
+            .spawn()
+            .context("Failed to start honcho")?
+    };
+
+    let pid = child.id();
+    std::fs::write(pid_path, pid.to_string())
+        .with_context(|| format!("Failed to write PID file: {}", pid_path.display()))?;
+
+    output::status(&format!("plit started (PID {})", pid));
+    output::status(&format!("Logs: {}", log_path.display()));
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn run_background(
+    _honcho_bin: &PathBuf,
+    _procfile_path: &PathBuf,
+    _env_path: &PathBuf,
+    _platform_dir: &PathBuf,
+    _pid_path: &PathBuf,
+) -> Result<()> {
+    bail!("Background mode is only supported on Unix. Use --foreground instead.");
 }
 
 fn generate_procfile(
@@ -109,6 +187,19 @@ fn generate_procfile(
         ),
         format!("worker: {rq} worker-pool workflows -w worker_class.PipelitWorker -n 4"),
     ];
+
+    // Add DragonflyDB if the managed binary exists
+    if let Ok(dragonfly_path) = config::dragonfly_bin_path() {
+        if dragonfly_path.exists() {
+            lines.insert(
+                0,
+                format!(
+                    "redis: {} --logtostderr --port 6379",
+                    dragonfly_path.display()
+                ),
+            );
+        }
+    }
 
     if dev {
         lines.push("frontend: npm --prefix frontend run dev".to_string());

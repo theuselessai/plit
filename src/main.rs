@@ -95,6 +95,10 @@ enum Commands {
         /// Include frontend dev server with hot reload
         #[arg(long)]
         dev: bool,
+
+        /// Run in foreground (blocking) instead of as a background daemon
+        #[arg(long)]
+        foreground: bool,
     },
 
     /// Stop the running plit stack
@@ -203,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Init => commands::init::run().await,
 
-        Commands::Start { dev } => commands::start::run(dev).await,
+        Commands::Start { dev, foreground } => commands::start::run(dev, foreground).await,
 
         Commands::Stop => commands::stop::run(),
 

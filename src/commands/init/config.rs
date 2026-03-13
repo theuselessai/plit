@@ -68,6 +68,10 @@ pub fn data_dir() -> Result<PathBuf> {
     Ok(base.join("plit"))
 }
 
+pub fn dragonfly_bin_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("dragonfly"))
+}
+
 pub fn config_json_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.json"))
 }
@@ -82,6 +86,10 @@ pub fn pipelit_dir() -> Result<PathBuf> {
 
 pub fn venv_dir() -> Result<PathBuf> {
     Ok(data_dir()?.join("venv"))
+}
+
+pub fn log_path() -> Result<PathBuf> {
+    Ok(data_dir()?.join("plit.log"))
 }
 
 pub fn write_dot_env(inputs: &UserInputs, tokens: &SharedTokens) -> Result<()> {
