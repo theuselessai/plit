@@ -101,7 +101,11 @@ enum Commands {
     Stop,
 
     /// Remove all plit data, config, and Pipelit clone
-    Uninstall,
+    Uninstall {
+        /// Skip all prompts and proceed with removal
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -203,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Stop => commands::stop::run(),
 
-        Commands::Uninstall => commands::uninstall::run(),
+        Commands::Uninstall { force } => commands::uninstall::run(force),
     }
 }
 

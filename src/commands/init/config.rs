@@ -189,6 +189,24 @@ pub fn write_gateway_config(
     Ok(())
 }
 
+pub fn write_managed_markers() -> Result<()> {
+    let marker = ".plit-managed";
+
+    let data = data_dir()?;
+    if data.exists() {
+        std::fs::write(data.join(marker), "installed by plit init\n")?;
+    }
+
+    let pipelit_cfg = dirs::config_dir()
+        .map(|d| d.join("pipelit"))
+        .unwrap_or_default();
+    if pipelit_cfg.exists() {
+        std::fs::write(pipelit_cfg.join(marker), "installed by plit init\n")?;
+    }
+
+    Ok(())
+}
+
 #[cfg(unix)]
 fn restrict_permissions(path: &std::path::Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;

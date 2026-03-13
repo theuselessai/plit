@@ -94,6 +94,9 @@ pub async fn run() -> Result<()> {
     config::write_gateway_config(&inputs, &shared_tokens, &fixture)?;
     output::status("");
 
+    // 19b. Drop management markers so uninstall can detect plit-managed dirs
+    config::write_managed_markers()?;
+
     // 20. Done
     let config_path = config::config_json_path()?;
     let env_display = config::dot_env_path()?;
