@@ -38,6 +38,44 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Local gateway commands — chat, send, and listen via the generic adapter
+    #[command(subcommand)]
+    Local(LocalCommands),
+
+    /// Credential management
+    #[command(subcommand)]
+    Credentials(CredentialCommands),
+
+    /// Check gateway health
+    Health,
+
+    /// Interactive setup wizard — bootstrap Pipelit + Gateway from scratch
+    Init,
+
+    /// Start the plit stack (gateway + Pipelit + workers)
+    Start {
+        /// Include frontend dev server with hot reload
+        #[arg(long)]
+        dev: bool,
+
+        /// Run in foreground (blocking) instead of as a background daemon
+        #[arg(long)]
+        foreground: bool,
+    },
+
+    /// Stop the running plit stack
+    Stop,
+
+    /// Remove all plit data, config, and Pipelit clone
+    Uninstall {
+        /// Skip all prompts and proceed with removal
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum LocalCommands {
     /// Interactive chat REPL — send messages and see responses in real time
     Chat {
         /// Credential ID to chat through
@@ -78,37 +116,6 @@ enum Commands {
         /// Chat/conversation ID
         #[arg(long)]
         chat_id: String,
-    },
-
-    /// Credential management
-    #[command(subcommand)]
-    Credentials(CredentialCommands),
-
-    /// Check gateway health
-    Health,
-
-    /// Interactive setup wizard — bootstrap Pipelit + Gateway from scratch
-    Init,
-
-    /// Start the plit stack (gateway + Pipelit + workers)
-    Start {
-        /// Include frontend dev server with hot reload
-        #[arg(long)]
-        dev: bool,
-
-        /// Run in foreground (blocking) instead of as a background daemon
-        #[arg(long)]
-        foreground: bool,
-    },
-
-    /// Stop the running plit stack
-    Stop,
-
-    /// Remove all plit data, config, and Pipelit clone
-    Uninstall {
-        /// Skip all prompts and proceed with removal
-        #[arg(long)]
-        force: bool,
     },
 }
 
@@ -177,23 +184,27 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match cli.command {
-        Commands::Chat {
-            credential_id,
-            chat_id,
-            user_id,
-        } => commands::chat::run(&ctx, &credential_id, &chat_id, &user_id).await,
+        Commands::Local(local_cmd) => match local_cmd {
+            LocalCommands::Chat {
+                credential_id,
+                chat_id,
+                user_id,
+            } => commands::chat::run(&ctx, &credential_id, &chat_id, &user_id).await,
 
-        Commands::Send {
-            credential_id,
-            chat_id,
-            text,
-            user_id,
-        } => commands::send::run(&ctx, &credential_id, &chat_id, text.as_deref(), &user_id).await,
+            LocalCommands::Send {
+                credential_id,
+                chat_id,
+                text,
+                user_id,
+            } => {
+                commands::send::run(&ctx, &credential_id, &chat_id, text.as_deref(), &user_id).await
+            }
 
-        Commands::Listen {
-            credential_id,
-            chat_id,
-        } => commands::listen::run(&ctx, &credential_id, &chat_id).await,
+            LocalCommands::Listen {
+                credential_id,
+                chat_id,
+            } => commands::listen::run(&ctx, &credential_id, &chat_id).await,
+        },
 
         Commands::Credentials(cmd) => commands::credentials::run(&ctx, cmd).await,
 
