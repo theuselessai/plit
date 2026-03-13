@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
+use super::prereqs::Environment;
 use super::prompts::UserInputs;
 use super::tokens::SharedTokens;
 use crate::output;
@@ -139,6 +140,7 @@ pub fn write_gateway_config(
     inputs: &UserInputs,
     tokens: &SharedTokens,
     fixture: &FixtureOutput,
+    env: &Environment,
 ) -> Result<()> {
     let cfg_dir = config_dir()?;
     std::fs::create_dir_all(&cfg_dir)
@@ -176,7 +178,11 @@ pub fn write_gateway_config(
 
     let config = GatewayConfig {
         gateway: GatewaySection {
-            listen: format!("127.0.0.1:{}", inputs.gateway_port),
+            listen: if env.sandbox_mode == "container" {
+                format!("0.0.0.0:{}", inputs.gateway_port)
+            } else {
+                format!("127.0.0.1:{}", inputs.gateway_port)
+            },
             admin_token: tokens.admin_token.clone(),
             default_backend: "pipelit".to_string(),
             adapters_dir: adapters_dir.to_string_lossy().to_string(),
