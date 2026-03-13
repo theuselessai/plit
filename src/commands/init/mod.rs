@@ -11,6 +11,7 @@ use crate::output;
 
 pub struct InitArgs {
     pub non_interactive: bool,
+    pub skip_install: bool,
     pub username: Option<String>,
     pub password: Option<String>,
     pub llm_provider: Option<String>,
@@ -54,33 +55,37 @@ pub async fn run(args: InitArgs) -> Result<()> {
     let env = prereqs::check_all(args.non_interactive, args.managed_dragonfly)?;
     output::status("");
 
-    // 3. Clone + venv + deps
-    output::status("Setting up Pipelit...");
+    // 3. Clone + venv + deps (skipped with --skip-install for pre-installed environments)
+    if args.skip_install {
+        output::status("Skipping install (--skip-install).");
+    } else {
+        output::status("Setting up Pipelit...");
 
-    if pipelit_exists && !config_exists {
-        if args.non_interactive {
-            output::status("Re-cloning Pipelit from scratch (non-interactive).");
-            let pipelit_dir = config::pipelit_dir()?;
-            std::fs::remove_dir_all(&pipelit_dir)?;
-            install::clone_pipelit().await?;
-        } else {
-            let reclone = Confirm::new()
-                .with_prompt("Pipelit directory already exists. Re-clone from scratch?")
-                .default(false)
-                .interact()?;
-
-            if reclone {
+        if pipelit_exists && !config_exists {
+            if args.non_interactive {
+                output::status("Re-cloning Pipelit from scratch (non-interactive).");
                 let pipelit_dir = config::pipelit_dir()?;
                 std::fs::remove_dir_all(&pipelit_dir)?;
                 install::clone_pipelit().await?;
-            }
-        }
-    } else {
-        install::clone_pipelit().await?;
-    }
+            } else {
+                let reclone = Confirm::new()
+                    .with_prompt("Pipelit directory already exists. Re-clone from scratch?")
+                    .default(false)
+                    .interact()?;
 
-    install::create_venv().await?;
-    install::install_deps().await?;
+                if reclone {
+                    let pipelit_dir = config::pipelit_dir()?;
+                    std::fs::remove_dir_all(&pipelit_dir)?;
+                    install::clone_pipelit().await?;
+                }
+            }
+        } else {
+            install::clone_pipelit().await?;
+        }
+
+        install::create_venv().await?;
+        install::install_deps().await?;
+    }
     output::status("");
 
     // 4-13. Prompts (ports, admin, redis, base url, LLM)

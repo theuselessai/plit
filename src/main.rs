@@ -55,6 +55,10 @@ enum Commands {
         #[arg(long)]
         non_interactive: bool,
 
+        /// Skip clone, venv, and dependency install (for pre-installed environments like Docker)
+        #[arg(long)]
+        skip_install: bool,
+
         /// Admin username (required in non-interactive mode)
         #[arg(long)]
         username: Option<String>,
@@ -266,6 +270,7 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Init {
             non_interactive,
+            skip_install,
             username,
             password,
             llm_provider,
@@ -280,6 +285,7 @@ async fn main() -> anyhow::Result<()> {
         } => {
             commands::init::run(commands::init::InitArgs {
                 non_interactive,
+                skip_install,
                 username,
                 password,
                 llm_provider,
