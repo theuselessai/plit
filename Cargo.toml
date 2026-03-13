@@ -1,10 +1,11 @@
 [package]
 name = "plit"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "Pipelit ecosystem CLI and gateway — install, start, and chat with AI agents"
 license = "Apache-2.0"
 repository = "https://github.com/theuselessai/plit"
+readme = "README.md"
 keywords = ["ai", "agent", "gateway", "pipelit", "cli"]
 categories = ["command-line-utilities", "network-programming"]
 
@@ -18,7 +19,7 @@ path = "src/gw_main.rs"
 
 [dependencies]
 # Gateway server
-plit-gw = "0.3.1"
+plit-gw = "0.3.2"
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }

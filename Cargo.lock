@@ -1700,7 +1700,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plit"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1723,9 +1723,9 @@ dependencies = [
 
 [[package]]
 name = "plit-gw"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40e46741536851e30bca5f90b6bacd370c02e0220b969180aed2c682f150a5ac"
+checksum = "603751fbc4b22aedae33497a18c2260c04c9a34d07f97f41d636188010924cb0"
 dependencies = [
  "anyhow",
  "async-trait",
