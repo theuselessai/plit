@@ -69,9 +69,9 @@ docker run -d --name plit \
 Releases follow a strict RC → stable promotion flow. **Never tag a stable version directly.**
 
 ```
-v0.4.0-rc.1  →  smoke E2E (mock LLM)  →  GHCR :0.4.0-rc.1 + GitHub prerelease
-v0.4.0-rc.2  →  smoke E2E (mock LLM)  →  GHCR :0.4.0-rc.2 + GitHub prerelease  (if fixes needed)
-v0.4.0       →  full E2E (real key)    →  GHCR :0.4.0 + :latest + crates.io + GitHub stable release
+v0.4.0-rc.1  →  full E2E (real key)    →  GHCR :0.4.0-rc.1 + GitHub prerelease
+v0.4.0-rc.2  →  full E2E (real key)    →  GHCR :0.4.0-rc.2 + GitHub prerelease  (if fixes needed)
+v0.4.0       →  no E2E (retag of RC)   →  GHCR :0.4.0 + :latest + crates.io + GitHub stable release
 ```
 
 ### Step-by-Step Release Process
@@ -95,7 +95,7 @@ git push origin v0.4.0-rc.1
 
 This triggers the release workflow which will:
 - Build Docker image
-- Run smoke E2E (mock LLM, from Pipelit repo's `e2e/` scripts)
+- Run full E2E (real Anthropic key via `LLM_API_KEY` org secret)
 - Push to GHCR as `:0.4.0-rc.1`
 - Create GitHub prerelease
 
@@ -114,9 +114,7 @@ git push origin v0.4.0
 ```
 
 This triggers the release workflow which will:
-- Build Docker image
-- Run full E2E (real Anthropic API key via `LLM_API_KEY` org secret)
-- Push to GHCR as `:0.4.0` and `:latest`
+- Retag the RC Docker image as `:0.4.0` and `:latest` (no rebuild, no E2E — same code already validated)
 - Publish to crates.io (via `CARGO_REGISTRY_TOKEN` org secret)
 - Create GitHub stable release
 
@@ -132,7 +130,7 @@ This triggers the release workflow which will:
 
 | Secret | Purpose |
 |--------|---------|
-| `LLM_API_KEY` | Real Anthropic API key for full E2E on stable releases |
+| `LLM_API_KEY` | Real Anthropic API key for full E2E on RC releases |
 | `CARGO_REGISTRY_TOKEN` | crates.io publish token (scope: `publish-update`) |
 
 ### E2E Test Suites
@@ -141,13 +139,14 @@ E2E scripts live in the **Pipelit** repo at `e2e/`. The release workflow checks 
 
 | Suite | LLM | When | What it validates |
 |-------|-----|------|-------------------|
-| Smoke | Mock server | RC tags | Container boot, auth, user CRUD, API keys, gateway health, chat round-trip |
-| Full | Real Anthropic | Stable tags | All smoke tests + tool use + sandbox execution |
+| Smoke | Mock server | PR (path-filtered) | Container boot, auth, user CRUD, API keys, gateway health, chat round-trip (mock) |
+| Full | Real Anthropic | RC tags | All smoke tests + real LLM round-trip + tool use + sandbox execution |
+| None | — | Stable tags | No E2E — stable is a retag of the validated RC |
 
 ### Anti-Patterns
 
 - **NEVER** tag a stable release without a passing RC first
-- **NEVER** rebuild the Docker image for stable — it should be the same code as the RC
+- **NEVER** rebuild the Docker image for stable — stable retags the RC image, same binary
 - **NEVER** publish RC versions to crates.io
 - **NEVER** point `:latest` at an RC
 

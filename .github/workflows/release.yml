@@ -14,15 +14,12 @@ env:
   IMAGE_NAME: theuselessai/plit
 
 jobs:
-  build:
+  meta:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
       is_rc: ${{ steps.meta.outputs.is_rc }}
-      image_digest: ${{ steps.push.outputs.digest }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Extract version metadata
         id: meta
         run: |
@@ -33,6 +30,14 @@ jobs:
           else
             echo "is_rc=false" >> "$GITHUB_OUTPUT"
           fi
+
+  # RC: build image, run full E2E, push to GHCR
+  build:
+    needs: meta
+    if: needs.meta.outputs.is_rc == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -45,26 +50,15 @@ jobs:
         run: |
           docker build \
             --build-arg PIPELIT_REF=master \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }} \
             .
 
       - name: Push Docker image
-        id: push
-        run: |
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} | cut -d@ -f2)
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-
-      - name: Tag as latest (stable only)
-        if: steps.meta.outputs.is_rc == 'false'
-        run: |
-          docker tag \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }}
 
   e2e:
-    needs: build
+    needs: [meta, build]
+    if: needs.meta.outputs.is_rc == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -83,12 +77,12 @@ jobs:
 
       - name: Pull built image
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }} plit-e2e:local
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }} plit-e2e:local
 
-      - name: Run E2E (smoke for RC, full for stable)
+      - name: Run full E2E
         env:
-          ANTHROPIC_API_KEY: ${{ needs.build.outputs.is_rc == 'false' && secrets.LLM_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: ./e2e/run_smoke.sh plit-e2e:local
 
       - name: Container logs on failure
@@ -99,8 +93,43 @@ jobs:
             docker logs "$c" 2>&1 | tail -100
           done
 
+  # Stable: retag RC image, push :version + :latest, publish crate
+  promote:
+    needs: meta
+    if: needs.meta.outputs.is_rc == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag RC image as stable
+        run: |
+          # Find the latest RC tag for this version
+          VERSION="${{ needs.meta.outputs.version }}"
+          # Pull any RC image for this version (try rc.1, rc.2, etc. in reverse)
+          for i in $(seq 10 -1 1); do
+            RC_TAG="${VERSION}-rc.${i}"
+            if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${RC_TAG} 2>/dev/null; then
+              echo "Found RC image: ${RC_TAG}"
+              docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${RC_TAG} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+              docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${RC_TAG} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+              docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+              docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+              exit 0
+            fi
+          done
+          echo "::error::No RC image found for v${VERSION}. Tag an RC first."
+          exit 1
+
   release:
-    needs: [build, e2e]
+    needs: [meta, build, e2e, promote]
+    if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,23 +137,22 @@ jobs:
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          tag: v${{ needs.build.outputs.version }}
-          name: v${{ needs.build.outputs.version }}
-          prerelease: ${{ needs.build.outputs.is_rc == 'true' }}
-          makeLatest: ${{ needs.build.outputs.is_rc == 'false' }}
+          tag: v${{ needs.meta.outputs.version }}
+          name: v${{ needs.meta.outputs.version }}
+          prerelease: ${{ needs.meta.outputs.is_rc == 'true' }}
+          makeLatest: ${{ needs.meta.outputs.is_rc == 'false' }}
           generateReleaseNotes: true
           body: |
             ## Docker
 
             ```sh
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }}
             ```
 
   publish-crate:
-    needs: [build, e2e]
+    needs: [meta, promote]
+    if: needs.meta.outputs.is_rc == 'false'
     runs-on: ubuntu-latest
-    # Only publish to crates.io for stable releases
-    if: needs.build.outputs.is_rc == 'false'
     steps:
       - uses: actions/checkout@v4
 
