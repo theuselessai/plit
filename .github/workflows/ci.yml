@@ -156,6 +156,14 @@ jobs:
           sys.exit(1)
           "
 
+      - name: Test plit auth login/status/logout
+        run: |
+          ./plit auth login --url http://localhost:8000 --username admin --password testpass123
+          ./plit auth status
+          ./plit auth logout
+          ./plit auth status | grep -q "Not logged in"
+          echo "Auth commands passed"
+
       - name: Auth and send chat message
         run: |
           python3 -c "
