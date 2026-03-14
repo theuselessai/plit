@@ -193,7 +193,7 @@ jobs:
 
           # 4. Send message through gateway
           send_req = urllib.request.Request(
-              f'{GW}/api/v1/generic/default_agent/send',
+              f'{GW}/api/v1/chat/default_agent',
               data=json.dumps({'chat_id': 'e2e-test', 'text': 'Hello mock', 'from': {'id': 'ci-user'}}).encode(),
               headers={'Authorization': f'Bearer {cred_token}', 'Content-Type': 'application/json'})
           send_resp = json.loads(urllib.request.urlopen(send_req).read())
