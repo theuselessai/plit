@@ -1,6 +1,8 @@
 # Stage 1: Clone Pipelit
 FROM alpine/git:latest AS pipelit-source
-RUN git clone --depth 1 https://github.com/theuselessai/Pipelit.git /pipelit
+ARG PIPELIT_REPO=https://github.com/theuselessai/Pipelit.git
+ARG PIPELIT_REF=master
+RUN git clone --depth 1 --branch "$PIPELIT_REF" "$PIPELIT_REPO" /pipelit
 
 # Stage 2: Build plit + plit-gw
 FROM rust:1-bookworm AS rust-builder
