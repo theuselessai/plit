@@ -62,6 +62,22 @@ docker run -d --name plit \
   plit-e2e:local
 ```
 
+## Versioning
+
+Each component has an independent version. The Docker image is the **project release** — a tested combination of all three.
+
+```
+VERSION file (repo root):
+  PROJECT=0.4.0        ← Docker tag, project release version
+  PLIT=0.4.0           ← plit CLI version (Cargo.toml)
+  PLIT_GW=0.3.2        ← plit-gw version (Cargo.toml)
+  PIPELIT=0.3.9        ← Pipelit version (git tag on Pipelit repo)
+```
+
+- Bumping ANY component → update VERSION → new project release
+- Docker `:latest` always points to the latest stable PROJECT version
+- The release workflow reads VERSION to pin Pipelit to a specific tag (not master)
+
 ## Release Workflow (IMPORTANT — follow this process)
 
 ### Release Lifecycle
@@ -76,13 +92,13 @@ v0.4.0       →  no E2E (retag of RC)   →  GHCR :0.4.0 + :latest + crates.io 
 
 ### Step-by-Step Release Process
 
-#### 1. Bump version
+#### 1. Update VERSION file
 
 ```bash
-# Edit Cargo.toml: version = "0.4.0"
-cargo update -p plit
-git add Cargo.toml Cargo.lock
-git commit -m "chore: bump version to 0.4.0"
+# Edit VERSION: bump PROJECT and any changed component versions
+# Edit Cargo.toml if plit version changed
+git add VERSION Cargo.toml Cargo.lock
+git commit -m "chore: bump to 0.4.0"
 git push origin main
 ```
 
@@ -94,10 +110,11 @@ git push origin v0.4.0-rc.1
 ```
 
 This triggers the release workflow which will:
-- Build Docker image
+- Read VERSION for component pins
+- Build Docker image with `PIPELIT_REF=v{PIPELIT}` (pinned tag, not master)
 - Run full E2E (real Anthropic key via `LLM_API_KEY` org secret)
 - Push to GHCR as `:0.4.0-rc.1`
-- Create GitHub prerelease
+- Create GitHub prerelease with component matrix
 
 #### 3. Validate RC
 
@@ -115,8 +132,9 @@ git push origin v0.4.0
 
 This triggers the release workflow which will:
 - Retag the RC Docker image as `:0.4.0` and `:latest` (no rebuild, no E2E — same code already validated)
+- Build platform binaries for 6 targets (musl for Linux)
 - Publish to crates.io (via `CARGO_REGISTRY_TOKEN` org secret)
-- Create GitHub stable release
+- Create GitHub stable release with component matrix and binary downloads
 
 ### Docker Tag Strategy
 

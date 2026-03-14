@@ -19,8 +19,13 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       is_rc: ${{ steps.meta.outputs.is_rc }}
+      pipelit_version: ${{ steps.versions.outputs.pipelit }}
+      plit_version: ${{ steps.versions.outputs.plit }}
+      plit_gw_version: ${{ steps.versions.outputs.plit_gw }}
     steps:
-      - name: Extract version metadata
+      - uses: actions/checkout@v4
+
+      - name: Extract tag metadata
         id: meta
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
@@ -30,6 +35,15 @@ jobs:
           else
             echo "is_rc=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Read VERSION manifest
+        id: versions
+        run: |
+          source VERSION
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "plit=$PLIT" >> "$GITHUB_OUTPUT"
+          echo "plit_gw=$PLIT_GW" >> "$GITHUB_OUTPUT"
+          echo "pipelit=$PIPELIT" >> "$GITHUB_OUTPUT"
 
   # RC: build Docker image, run full E2E, push to GHCR
   build-docker:
@@ -49,7 +63,7 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            --build-arg PIPELIT_REF=master \
+            --build-arg PIPELIT_REF=v${{ needs.meta.outputs.pipelit_version }} \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }} \
             .
 
@@ -66,7 +80,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: theuselessai/Pipelit
-          ref: master
+          ref: v${{ needs.meta.outputs.pipelit_version }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -232,6 +246,14 @@ jobs:
           generateReleaseNotes: true
           artifacts: artifacts/*
           body: |
+            ## Components
+
+            | Component | Version |
+            |-----------|---------|
+            | plit | ${{ needs.meta.outputs.plit_version }} |
+            | plit-gw | ${{ needs.meta.outputs.plit_gw_version }} |
+            | Pipelit | ${{ needs.meta.outputs.pipelit_version }} |
+
             ## Install
 
             ```sh
