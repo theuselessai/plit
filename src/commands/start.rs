@@ -139,6 +139,8 @@ async fn run_docker(dev: bool, foreground: bool) -> Result<()> {
             "-d".to_string(),
             "--name".to_string(),
             cfg.container_name.clone(),
+            "--add-host".to_string(),
+            "host.docker.internal:host-gateway".to_string(),
             "-p".to_string(),
             format!("{}:{}", cfg.gateway_port, cfg.gateway_port),
             "-p".to_string(),
