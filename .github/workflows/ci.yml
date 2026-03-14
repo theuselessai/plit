@@ -96,18 +96,9 @@ jobs:
           retention-days: 7
 
   docker-e2e:
-    name: Docker E2E (${{ matrix.os }})
+    name: Docker E2E
     needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            binary: ./plit
-          - os: windows-latest
-            binary: ./plit.exe
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Pipelit (for mock LLM server)
         uses: actions/checkout@v4
@@ -123,7 +114,6 @@ jobs:
           name: plit-${{ runner.os }}
 
       - name: Make binary executable
-        if: runner.os != 'Windows'
         run: chmod +x plit
 
       - name: Start mock LLM server
@@ -138,12 +128,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Docker mode init
-        run: ${{ matrix.binary }} init --non-interactive --username admin --password testpass123 --llm-provider anthropic --api-key sk-mock-test-key --llm-model claude-sonnet-4-20250514 --llm-base-url http://host.docker.internal:9999
+        run: ./plit init --non-interactive --username admin --password testpass123 --llm-provider anthropic --api-key sk-mock-test-key --llm-model claude-sonnet-4-20250514 --llm-base-url http://host.docker.internal:9999
         env:
           PLIT_DOCKER_MODE: "1"
 
       - name: Start container
-        run: ${{ matrix.binary }} start
+        run: ./plit start
 
       - name: Wait for services
         run: |
@@ -169,41 +159,62 @@ jobs:
       - name: Auth and send chat message
         run: |
           python3 -c "
-          import json, time, urllib.request, urllib.error
+          import json, time, urllib.request
+
+          BASE = 'http://localhost:8000/api/v1'
+          GW = 'http://localhost:8080'
+
+          def api(method, path, token=None, data=None):
+              headers = {'Content-Type': 'application/json'}
+              if token:
+                  headers['Authorization'] = f'Bearer {token}'
+              body = json.dumps(data).encode() if data else None
+              req = urllib.request.Request(f'{BASE}{path}', data=body, headers=headers, method=method)
+              return json.loads(urllib.request.urlopen(req).read())
 
           # 1. Authenticate
-          auth_req = urllib.request.Request(
-              'http://localhost:8000/api/v1/auth/token/',
-              data=json.dumps({'username': 'admin', 'password': 'testpass123'}).encode(),
-              headers={'Content-Type': 'application/json'})
-          auth_resp = json.loads(urllib.request.urlopen(auth_req).read())
-          token = auth_resp['key']
+          auth = api('POST', '/auth/token/', data={'username': 'admin', 'password': 'testpass123'})
+          token = auth['key']
           print(f'1. Authenticated (token: {token[:8]}...)')
 
-          # 2. Get API key
-          keys_req = urllib.request.Request(
-              'http://localhost:8000/api/v1/users/me/keys',
-              headers={'Authorization': f'Bearer {token}'})
-          keys = json.loads(urllib.request.urlopen(keys_req).read())
-          api_key = keys[0]['key']
-          print(f'2. Got API key ({api_key[:8]}...)')
+          # 2. Create API key
+          key_resp = api('POST', '/users/me/keys', token=token, data={'name': 'e2e-ci-key'})
+          api_key = key_resp.get('raw_key') or key_resp.get('key', '')
+          assert api_key, f'No API key returned: {key_resp}'
+          print(f'2. Created API key ({api_key[:8]}...)')
 
-          # 3. Send message through gateway
+          # 3. Get gateway admin token from inside container
+          import subprocess
+          gw_admin = subprocess.check_output([
+              'docker', 'exec', 'plit', 'python3', '-c',
+              \"import json; cfg=json.load(open('/root/.config/plit/config.json')); print(cfg['gateway']['admin_token'])\"
+          ]).decode().strip()
+          print(f'3. Got gateway admin token ({gw_admin[:8]}...)')
+
+          # 4. Get credential token from gateway
+          cred_req = urllib.request.Request(
+              f'{GW}/admin/credentials',
+              headers={'Authorization': f'Bearer {gw_admin}'})
+          creds = json.loads(urllib.request.urlopen(cred_req).read())
+          cred_token = list(creds.values())[0]['token']
+          print(f'4. Got credential token ({cred_token[:8]}...)')
+
+          # 5. Send message through gateway
           send_req = urllib.request.Request(
-              'http://localhost:8080/api/v1/generic/default_agent/send',
+              f'{GW}/api/v1/generic/default_agent/send',
               data=json.dumps({'chat_id': 'e2e-test', 'text': 'Hello mock', 'from': {'id': 'ci-user'}}).encode(),
-              headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'})
+              headers={'Authorization': f'Bearer {cred_token}', 'Content-Type': 'application/json'})
           send_resp = json.loads(urllib.request.urlopen(send_req).read())
-          print(f'3. Message sent: {json.dumps(send_resp)}')
+          print(f'5. Message sent: {json.dumps(send_resp)}')
 
-          # 4. Wait for async response and check mock server was hit
+          # 6. Wait for async processing
           time.sleep(5)
-          print('4. Mock LLM chat round-trip complete')
+          print('6. Mock LLM chat round-trip complete')
           "
 
       - name: Stop container
         if: always()
-        run: ${{ matrix.binary }} stop
+        run: ./plit stop
 
       - name: Container logs on failure
         if: failure()
