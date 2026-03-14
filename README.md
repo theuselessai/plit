@@ -11,17 +11,23 @@
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" alt="License: Apache 2.0" /></a>
 </p>
 
-**Supported platforms:** Linux (native), macOS (via Docker), Windows (via WSL2).
+**Supported platforms:** Linux, macOS, Windows, Raspberry Pi, iSH (iOS).
 
 ---
 
 ## Install
 
 ```sh
+curl -sSf https://raw.githubusercontent.com/theuselessai/plit/main/install.sh | sh
+```
+
+Or via Cargo:
+
+```sh
 cargo install plit
 ```
 
-This installs two binaries: `plit` (the CLI) and `plit-gw` (the gateway server).
+Pre-built static binaries are available for Linux (x86_64, aarch64, i686), macOS (Intel, Apple Silicon), and Windows.
 
 ---
 
@@ -49,11 +55,13 @@ Interactive wizard. Walks you through:
 - Configuring an LLM provider
 - Creating initial credentials
 
+On macOS and Windows, `plit init` detects the platform and switches to Docker mode automatically — pulling and running the [plit Docker image](https://github.com/orgs/theuselessai/packages/container/package/plit).
+
 Run this once before anything else.
 
 ### `plit start` / `plit stop`
 
-Start and stop the full stack: gateway, Pipelit, and background workers. Managed via honcho.
+Start and stop the full stack: gateway, Pipelit, and background workers. On Linux, managed via honcho. On macOS/Windows, managed via Docker.
 
 ```sh
 plit start

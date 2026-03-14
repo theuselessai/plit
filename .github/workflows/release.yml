@@ -31,8 +31,8 @@ jobs:
             echo "is_rc=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # RC: build image, run full E2E, push to GHCR
-  build:
+  # RC: build Docker image, run full E2E, push to GHCR
+  build-docker:
     needs: meta
     if: needs.meta.outputs.is_rc == 'true'
     runs-on: ubuntu-latest
@@ -57,7 +57,7 @@ jobs:
         run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.version }}
 
   e2e:
-    needs: [meta, build]
+    needs: [meta, build-docker]
     if: needs.meta.outputs.is_rc == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -93,7 +93,86 @@ jobs:
             docker logs "$c" 2>&1 | tail -100
           done
 
-  # Stable: retag RC image, push :version + :latest, publish crate
+  # Stable: build platform binaries
+  build-binaries:
+    needs: meta
+    if: needs.meta.outputs.is_rc == 'false'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            use_cross: true
+            artifact: plit-linux-x86_64
+          - target: i686-unknown-linux-musl
+            runner: ubuntu-latest
+            use_cross: true
+            artifact: plit-linux-i686
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            use_cross: true
+            artifact: plit-linux-aarch64
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            use_cross: false
+            artifact: plit-darwin-x86_64
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            use_cross: false
+            artifact: plit-darwin-aarch64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            use_cross: false
+            artifact: plit-windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@cross
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (native)
+        if: "!matrix.use_cross"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binaries (unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/plit dist/
+          cp target/${{ matrix.target }}/release/plit-gw dist/
+          chmod +x dist/plit dist/plit-gw
+          tar czf ${{ matrix.artifact }}.tar.gz -C dist plit plit-gw
+
+      - name: Package binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target/${{ matrix.target }}/release/plit.exe dist/
+          Copy-Item target/${{ matrix.target }}/release/plit-gw.exe dist/
+          Compress-Archive -Path dist/plit.exe, dist/plit-gw.exe -DestinationPath ${{ matrix.artifact }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Stable: promote Docker image
   promote:
     needs: meta
     if: needs.meta.outputs.is_rc == 'false'
@@ -110,9 +189,7 @@ jobs:
 
       - name: Retag RC image as stable
         run: |
-          # Find the latest RC tag for this version
           VERSION="${{ needs.meta.outputs.version }}"
-          # Pull any RC image for this version (try rc.1, rc.2, etc. in reverse)
           for i in $(seq 10 -1 1); do
             RC_TAG="${VERSION}-rc.${i}"
             if docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${RC_TAG} 2>/dev/null; then
@@ -128,11 +205,22 @@ jobs:
           exit 1
 
   release:
-    needs: [meta, build, e2e, promote]
+    needs: [meta, build-docker, e2e, build-binaries, promote]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download all binary artifacts
+        if: needs.meta.outputs.is_rc == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        if: needs.meta.outputs.is_rc == 'false'
+        run: ls -la artifacts/ || true
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
@@ -142,7 +230,16 @@ jobs:
           prerelease: ${{ needs.meta.outputs.is_rc == 'true' }}
           makeLatest: ${{ needs.meta.outputs.is_rc == 'false' }}
           generateReleaseNotes: true
+          artifacts: artifacts/*
           body: |
+            ## Install
+
+            ```sh
+            curl -sSf https://raw.githubusercontent.com/theuselessai/plit/main/install.sh | sh
+            ```
+
+            Or download a binary below for your platform.
+
             ## Docker
 
             ```sh
