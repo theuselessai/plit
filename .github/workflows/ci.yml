@@ -183,33 +183,25 @@ jobs:
           assert api_key, f'No API key returned: {key_resp}'
           print(f'2. Created API key ({api_key[:8]}...)')
 
-          # 3. Get gateway admin token from inside container
+          # 3. Get credential token from container config
           import subprocess
-          gw_admin = subprocess.check_output([
+          cred_token = subprocess.check_output([
               'docker', 'exec', 'plit', 'python3', '-c',
-              \"import json; cfg=json.load(open('/root/.config/plit/config.json')); print(cfg['gateway']['admin_token'])\"
+              \"import json; cfg=json.load(open('/root/.config/plit/config.json')); creds=cfg['credentials']; print(list(creds.values())[0]['token'])\"
           ]).decode().strip()
-          print(f'3. Got gateway admin token ({gw_admin[:8]}...)')
+          print(f'3. Got credential token ({cred_token[:8]}...)')
 
-          # 4. Get credential token from gateway
-          cred_req = urllib.request.Request(
-              f'{GW}/admin/credentials',
-              headers={'Authorization': f'Bearer {gw_admin}'})
-          creds = json.loads(urllib.request.urlopen(cred_req).read())
-          cred_token = list(creds.values())[0]['token']
-          print(f'4. Got credential token ({cred_token[:8]}...)')
-
-          # 5. Send message through gateway
+          # 4. Send message through gateway
           send_req = urllib.request.Request(
               f'{GW}/api/v1/generic/default_agent/send',
               data=json.dumps({'chat_id': 'e2e-test', 'text': 'Hello mock', 'from': {'id': 'ci-user'}}).encode(),
               headers={'Authorization': f'Bearer {cred_token}', 'Content-Type': 'application/json'})
           send_resp = json.loads(urllib.request.urlopen(send_req).read())
-          print(f'5. Message sent: {json.dumps(send_resp)}')
+          print(f'4. Message sent: {json.dumps(send_resp)}')
 
-          # 6. Wait for async processing
+          # 5. Wait for async processing
           time.sleep(5)
-          print('6. Mock LLM chat round-trip complete')
+          print('5. Mock LLM chat round-trip complete')
           "
 
       - name: Stop container
