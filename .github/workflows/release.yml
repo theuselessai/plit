@@ -88,7 +88,7 @@ jobs:
 
       - name: Run E2E (smoke for RC, full for stable)
         env:
-          ANTHROPIC_API_KEY: ${{ needs.build.outputs.is_rc == 'false' && secrets.ANTHROPIC_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ needs.build.outputs.is_rc == 'false' && secrets.LLM_API_KEY || '' }}
         run: ./e2e/run_smoke.sh plit-e2e:local
 
       - name: Container logs on failure
