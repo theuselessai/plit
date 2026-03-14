@@ -1,9 +1,16 @@
+use std::process::Command;
+
 use anyhow::{Context, Result, bail};
 
 use super::init::config;
+use super::init::config::DockerConfig;
 use crate::output;
 
 pub fn run() -> Result<()> {
+    if config::is_docker_mode() {
+        return stop_docker();
+    }
+
     let pid_path = config::data_dir()?.join("plit.pid");
 
     if !pid_path.exists() {
@@ -57,5 +64,37 @@ pub fn run() -> Result<()> {
     let _ = std::fs::remove_file(&pid_path);
     output::status("Stopped.");
 
+    Ok(())
+}
+
+fn stop_docker() -> Result<()> {
+    let docker_json_path = config::docker_json_path()?;
+    let raw = std::fs::read_to_string(&docker_json_path)
+        .with_context(|| format!("Failed to read {}", docker_json_path.display()))?;
+    let cfg: DockerConfig = serde_json::from_str(&raw).context("Failed to parse docker.json")?;
+
+    let exists = Command::new("docker")
+        .args(["ps", "-aq", "-f", &format!("name={}", cfg.container_name)])
+        .output()
+        .context("Failed to check for container")?;
+
+    if exists.stdout.is_empty() {
+        bail!(
+            "plit is not running (no container '{}' found)",
+            cfg.container_name
+        );
+    }
+
+    output::status(&format!("Stopping container '{}'...", cfg.container_name));
+    let status = Command::new("docker")
+        .args(["stop", &cfg.container_name])
+        .status()
+        .context("Failed to stop container")?;
+
+    if !status.success() {
+        bail!("Failed to stop container '{}'", cfg.container_name);
+    }
+
+    output::status("Stopped.");
     Ok(())
 }

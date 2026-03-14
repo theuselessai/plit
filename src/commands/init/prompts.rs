@@ -23,6 +23,17 @@ pub struct UserInputs {
     pub llm_model: String,
 }
 
+pub struct DockerInputs {
+    pub gateway_port: u16,
+    pub pipelit_port: u16,
+    pub admin_username: String,
+    pub admin_password: String,
+    pub llm_provider: String,
+    pub llm_api_key: String,
+    pub llm_base_url: String,
+    pub llm_model: String,
+}
+
 pub async fn collect(env: &Environment, args: &InitArgs) -> Result<UserInputs> {
     if args.non_interactive {
         return collect_non_interactive(env, args);
@@ -81,6 +92,149 @@ pub async fn collect(env: &Environment, args: &InitArgs) -> Result<UserInputs> {
         admin_password,
         redis_url,
         platform_base_url,
+        llm_provider,
+        llm_api_key,
+        llm_base_url,
+        llm_model,
+    })
+}
+
+pub async fn collect_docker(args: &InitArgs) -> Result<DockerInputs> {
+    if args.non_interactive {
+        return collect_docker_non_interactive(args);
+    }
+
+    let theme = ColorfulTheme::default();
+
+    let gateway_port: u16 = Input::with_theme(&theme)
+        .with_prompt("Gateway port")
+        .default(8080)
+        .interact_text()?;
+
+    let pipelit_port: u16 = loop {
+        let port: u16 = Input::with_theme(&theme)
+            .with_prompt("Pipelit port")
+            .default(8000)
+            .interact_text()?;
+        if port == gateway_port {
+            output::error(&format!("Port {} is already used for the gateway", port));
+            continue;
+        }
+        break port;
+    };
+
+    let admin_username: String = Input::with_theme(&theme)
+        .with_prompt("Admin username")
+        .default("admin".to_string())
+        .interact_text()?;
+
+    if admin_username.trim().is_empty() {
+        bail!("Admin username cannot be empty");
+    }
+
+    let admin_password = Password::with_theme(&theme)
+        .with_prompt("Admin password")
+        .with_confirmation("Confirm password", "Passwords don't match")
+        .interact()?;
+
+    if admin_password.is_empty() {
+        bail!("Admin password cannot be empty");
+    }
+
+    let (llm_provider, llm_api_key, llm_base_url, llm_model) = prompt_llm_config(&theme).await?;
+
+    output::status(&format!("  Gateway port:     {gateway_port}"));
+    output::status(&format!("  Pipelit port:     {pipelit_port}"));
+    output::status(&format!("  Admin username:   {admin_username}"));
+    output::status(&format!("  LLM provider:     {llm_provider}"));
+    output::status(&format!("  LLM model:        {llm_model}"));
+
+    Ok(DockerInputs {
+        gateway_port,
+        pipelit_port,
+        admin_username,
+        admin_password,
+        llm_provider,
+        llm_api_key,
+        llm_base_url,
+        llm_model,
+    })
+}
+
+fn collect_docker_non_interactive(args: &InitArgs) -> Result<DockerInputs> {
+    let admin_username = args
+        .username
+        .clone()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("--username is required in non-interactive mode"))?;
+
+    let admin_password = args
+        .password
+        .clone()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("--password is required in non-interactive mode"))?;
+
+    let llm_provider = args
+        .llm_provider
+        .clone()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("--llm-provider is required in non-interactive mode"))?;
+
+    match llm_provider.as_str() {
+        "openai" | "anthropic" | "gemini" | "ollama" | "openai-compatible" => {}
+        other => bail!(
+            "Invalid --llm-provider '{other}'. \
+             Must be one of: openai, anthropic, gemini, ollama, openai-compatible"
+        ),
+    }
+
+    let is_ollama = llm_provider == "ollama";
+    let needs_base_url = llm_provider == "ollama" || llm_provider == "openai-compatible";
+
+    let llm_api_key = if is_ollama {
+        String::new()
+    } else {
+        args.api_key
+            .clone()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("--api-key is required for provider '{llm_provider}'"))?
+    };
+
+    let llm_base_url = if needs_base_url {
+        args.llm_base_url
+            .clone()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!("--llm-base-url is required for provider '{llm_provider}'")
+            })?
+    } else {
+        args.llm_base_url.clone().unwrap_or_default()
+    };
+
+    let llm_model = args
+        .llm_model
+        .clone()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("--llm-model is required in non-interactive mode"))?;
+
+    let gateway_port = args.gateway_port.unwrap_or(8080);
+    let pipelit_port = args.pipelit_port.unwrap_or(8000);
+
+    if gateway_port == pipelit_port {
+        bail!("Gateway port and Pipelit port cannot be the same (both {gateway_port})");
+    }
+
+    output::status(&format!("  Gateway port:     {gateway_port}"));
+    output::status(&format!("  Pipelit port:     {pipelit_port}"));
+    output::status(&format!("  Admin username:   {admin_username}"));
+    output::status(&format!("  LLM provider:     {llm_provider}"));
+    output::status(&format!("  LLM model:        {llm_model}"));
+
+    Ok(DockerInputs {
+        gateway_port,
+        pipelit_port,
+        admin_username,
+        admin_password,
         llm_provider,
         llm_api_key,
         llm_base_url,
