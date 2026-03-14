@@ -53,6 +53,10 @@ pub fn run() -> Result<()> {
                 }
             }
         }
+
+        let _ = std::fs::remove_file(&pid_path);
+        output::status("Stopped.");
+        Ok(())
     }
 
     #[cfg(not(unix))]
@@ -60,11 +64,6 @@ pub fn run() -> Result<()> {
         let _ = pid;
         bail!("plit stop is only supported on Unix systems");
     }
-
-    let _ = std::fs::remove_file(&pid_path);
-    output::status("Stopped.");
-
-    Ok(())
 }
 
 fn stop_docker() -> Result<()> {

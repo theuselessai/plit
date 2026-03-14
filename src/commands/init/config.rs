@@ -106,6 +106,7 @@ pub fn venv_dir() -> Result<PathBuf> {
     Ok(data_dir()?.join("venv"))
 }
 
+#[cfg(unix)]
 pub fn log_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("plit.log"))
 }

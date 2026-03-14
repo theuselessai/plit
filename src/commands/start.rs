@@ -1,4 +1,3 @@
-use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -232,6 +231,7 @@ fn run_background(
     platform_dir: &PathBuf,
     pid_path: &PathBuf,
 ) -> Result<()> {
+    use std::fs::OpenOptions;
     use std::os::unix::process::CommandExt;
 
     let log_path = config::log_path()?;
