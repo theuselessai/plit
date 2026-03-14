@@ -2,12 +2,21 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::prereqs::Environment;
 use super::prompts::UserInputs;
 use super::tokens::SharedTokens;
 use crate::output;
+
+#[derive(Serialize, Deserialize)]
+pub struct DockerConfig {
+    pub container_name: String,
+    pub image: String,
+    pub gateway_port: u16,
+    pub pipelit_port: u16,
+    pub env: HashMap<String, String>,
+}
 
 #[derive(Serialize)]
 struct GatewayConfig {
@@ -77,6 +86,14 @@ pub fn config_json_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.json"))
 }
 
+pub fn docker_json_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("docker.json"))
+}
+
+pub fn is_docker_mode() -> bool {
+    docker_json_path().map(|p| p.exists()).unwrap_or(false)
+}
+
 pub fn dot_env_path() -> Result<PathBuf> {
     Ok(config_dir()?.join(".env"))
 }
@@ -89,6 +106,7 @@ pub fn venv_dir() -> Result<PathBuf> {
     Ok(data_dir()?.join("venv"))
 }
 
+#[cfg(unix)]
 pub fn log_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("plit.log"))
 }

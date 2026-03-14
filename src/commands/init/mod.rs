@@ -1,4 +1,5 @@
 pub(crate) mod config;
+mod docker;
 mod install;
 mod prereqs;
 mod prompts;
@@ -26,6 +27,10 @@ pub struct InitArgs {
 }
 
 pub async fn run(args: InitArgs) -> Result<()> {
+    if detect_needs_docker() {
+        return docker::run(args).await;
+    }
+
     output::status("plit init — setting up Pipelit + Gateway\n");
 
     // 1. Re-run detection
@@ -142,4 +147,24 @@ pub async fn run(args: InitArgs) -> Result<()> {
     output::status("Run `plit start` to launch.");
 
     Ok(())
+}
+
+fn detect_needs_docker() -> bool {
+    if std::env::var("PLIT_DOCKER_MODE").is_ok() {
+        return true;
+    }
+    match std::env::consts::OS {
+        "macos" => true,
+        "windows" => !is_wsl2(),
+        _ => false,
+    }
+}
+
+fn is_wsl2() -> bool {
+    std::fs::read_to_string("/proc/version")
+        .map(|v| {
+            let lower = v.to_lowercase();
+            lower.contains("microsoft") || lower.contains("wsl")
+        })
+        .unwrap_or(false)
 }

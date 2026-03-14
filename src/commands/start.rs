@@ -1,12 +1,17 @@
-use std::fs::OpenOptions;
 use std::path::PathBuf;
+use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
 use super::init::config;
+use super::init::config::DockerConfig;
 use crate::output;
 
 pub async fn run(dev: bool, foreground: bool) -> Result<()> {
+    if config::is_docker_mode() {
+        return run_docker(dev, foreground).await;
+    }
+
     let pid_path = pid_file_path()?;
     if is_running(&pid_path) {
         bail!(
@@ -88,6 +93,103 @@ pub async fn run(dev: bool, foreground: bool) -> Result<()> {
     }
 }
 
+async fn run_docker(dev: bool, foreground: bool) -> Result<()> {
+    if dev || foreground {
+        output::status("Note: --dev and --foreground flags are ignored in Docker mode.");
+    }
+
+    let docker_json_path = config::docker_json_path()?;
+    let raw = std::fs::read_to_string(&docker_json_path)
+        .with_context(|| format!("Failed to read {}", docker_json_path.display()))?;
+    let cfg: DockerConfig = serde_json::from_str(&raw).context("Failed to parse docker.json")?;
+
+    let running = Command::new("docker")
+        .args(["ps", "-q", "-f", &format!("name={}", cfg.container_name)])
+        .output()
+        .context("Failed to run docker ps")?;
+
+    if !running.stdout.is_empty() {
+        bail!(
+            "plit is already running (container '{}').",
+            cfg.container_name
+        );
+    }
+
+    let exists = Command::new("docker")
+        .args(["ps", "-aq", "-f", &format!("name={}", cfg.container_name)])
+        .output()
+        .context("Failed to check for existing container")?;
+
+    if !exists.stdout.is_empty() {
+        output::status(&format!(
+            "Starting existing container '{}'...",
+            cfg.container_name
+        ));
+        let status = Command::new("docker")
+            .args(["start", &cfg.container_name])
+            .status()
+            .context("Failed to start container")?;
+        if !status.success() {
+            bail!("Failed to start container '{}'", cfg.container_name);
+        }
+    } else {
+        output::status("Starting plit container...");
+        let mut args = vec![
+            "run".to_string(),
+            "-d".to_string(),
+            "--name".to_string(),
+            cfg.container_name.clone(),
+            "--add-host".to_string(),
+            "host.docker.internal:host-gateway".to_string(),
+            "-p".to_string(),
+            format!("{}:{}", cfg.gateway_port, cfg.gateway_port),
+            "-p".to_string(),
+            format!("{}:{}", cfg.pipelit_port, cfg.pipelit_port),
+        ];
+
+        for (key, val) in &cfg.env {
+            args.push("-e".to_string());
+            args.push(format!("{}={}", key, val));
+        }
+
+        args.push(cfg.image.clone());
+
+        let status = Command::new("docker")
+            .args(&args)
+            .status()
+            .context("Failed to run docker container")?;
+        if !status.success() {
+            bail!("Failed to start Docker container");
+        }
+    }
+
+    output::status("Waiting for health check...");
+    let health_url = format!("http://localhost:{}/health", cfg.gateway_port);
+    let client = reqwest::Client::new();
+    let mut healthy = false;
+
+    for _ in 0..30 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if let Ok(resp) = client.get(&health_url).send().await
+            && resp.status().is_success()
+        {
+            healthy = true;
+            break;
+        }
+    }
+
+    if healthy {
+        output::status("plit started.");
+        output::status(&format!("  Gateway: http://localhost:{}", cfg.gateway_port));
+        output::status(&format!("  Pipelit: http://localhost:{}", cfg.pipelit_port));
+    } else {
+        output::status("plit container started but health check did not pass within 30s.");
+        output::status("Check container logs: docker logs plit");
+    }
+
+    Ok(())
+}
+
 async fn run_foreground(
     honcho_bin: &PathBuf,
     procfile_path: &PathBuf,
@@ -131,6 +233,7 @@ fn run_background(
     platform_dir: &PathBuf,
     pid_path: &PathBuf,
 ) -> Result<()> {
+    use std::fs::OpenOptions;
     use std::os::unix::process::CommandExt;
 
     let log_path = config::log_path()?;
