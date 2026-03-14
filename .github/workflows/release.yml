@@ -129,7 +129,7 @@ jobs:
             use_cross: true
             artifact: plit-linux-aarch64
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-latest
             use_cross: false
             artifact: plit-darwin-x86_64
           - target: aarch64-apple-darwin
@@ -281,4 +281,4 @@ jobs:
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --no-verify
+        run: cargo publish --no-verify --allow-dirty
