@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use commands::auth::AuthCommands;
 
 mod client;
 mod commands;
@@ -41,6 +42,10 @@ enum Commands {
     /// Local gateway commands — chat, send, and listen via the generic adapter
     #[command(subcommand)]
     Local(LocalCommands),
+
+    /// Authenticate with a Pipelit backend
+    #[command(subcommand)]
+    Auth(AuthCommands),
 
     /// Credential management
     #[command(subcommand)]
@@ -257,6 +262,8 @@ async fn main() -> anyhow::Result<()> {
                 chat_id,
             } => commands::listen::run(&ctx, &credential_id, &chat_id).await,
         },
+
+        Commands::Auth(cmd) => commands::auth::run(cmd).await,
 
         Commands::Credentials(cmd) => commands::credentials::run(&ctx, cmd).await,
 
