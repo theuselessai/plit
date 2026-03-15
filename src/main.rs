@@ -47,6 +47,13 @@ enum Commands {
     #[command(subcommand)]
     Auth(AuthCommands),
 
+    /// Launch the terminal UI
+    Tui {
+        /// Override the Pipelit URL (defaults to value from `plit auth login`)
+        #[arg(long)]
+        url: Option<String>,
+    },
+
     /// Credential management
     #[command(subcommand)]
     Credentials(CredentialCommands),
@@ -264,6 +271,8 @@ async fn main() -> anyhow::Result<()> {
         },
 
         Commands::Auth(cmd) => commands::auth::run(cmd).await,
+
+        Commands::Tui { url } => plit_tui::run(url).await,
 
         Commands::Credentials(cmd) => commands::credentials::run(&ctx, cmd).await,
 

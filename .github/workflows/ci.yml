@@ -95,6 +95,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload plit-tui binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: plit-tui-${{ runner.os }}
+          path: target/release/plit-tui${{ matrix.binary_ext }}
+          if-no-files-found: error
+          retention-days: 7
+
   docker-e2e:
     name: Docker E2E
     needs: build

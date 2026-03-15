@@ -51,9 +51,11 @@ main() {
 
     install -m 755 "$tmp/plit" "$INSTALL_DIR/plit"
     install -m 755 "$tmp/plit-gw" "$INSTALL_DIR/plit-gw"
+    install -m 755 "$tmp/plit-tui" "$INSTALL_DIR/plit-tui"
 
-    printf "\n  plit:    %s/plit\n" "$INSTALL_DIR"
-    printf "  plit-gw: %s/plit-gw\n\n" "$INSTALL_DIR"
+    printf "\n  plit:     %s/plit\n" "$INSTALL_DIR"
+    printf "  plit-gw:  %s/plit-gw\n" "$INSTALL_DIR"
+    printf "  plit-tui: %s/plit-tui\n\n" "$INSTALL_DIR"
 
     case ":$PATH:" in
         *":$INSTALL_DIR:"*) ;;
