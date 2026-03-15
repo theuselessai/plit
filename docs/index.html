@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>plit — AI agent orchestration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #fafaf9;
+    --ink: #111110;
+    --muted: #78716c;
+    --accent: #0066ff;
+    --border: #e7e5e4;
+    --code-bg: #111110;
+    --code-fg: #e7e5e4;
+    --code-prompt: #525252;
+    --code-cmd: #f5f5f4;
+    --code-cursor: #0066ff;
+    --green: #16a34a;
+    --tab-active-bg: #fff;
+    --btn-docs-bg: var(--ink);
+    --btn-docs-fg: #fff;
+    --btn-docs-hover: #333;
+    --install-border: #222;
+    --install-hover: #444;
+    --shield-label: fafaf9;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0a;
+      --ink: #e7e5e4;
+      --muted: #a8a29e;
+      --accent: #3b82f6;
+      --border: #27272a;
+      --code-bg: #18181b;
+      --code-fg: #e7e5e4;
+      --code-prompt: #71717a;
+      --code-cmd: #f5f5f4;
+      --code-cursor: #3b82f6;
+      --green: #22c55e;
+      --tab-active-bg: #1c1c1e;
+      --btn-docs-bg: #e7e5e4;
+      --btn-docs-fg: #0a0a0a;
+      --btn-docs-hover: #d6d3d1;
+      --install-border: #333;
+      --install-hover: #555;
+      --shield-label: 0a0a0a;
+    }
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Geist', sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* NAV */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 3rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .logo span { color: var(--accent); }
+
+  nav ul {
+    list-style: none;
+    display: flex;
+    gap: 2.5rem;
+    align-items: center;
+  }
+
+  nav a {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  nav a:hover { color: var(--ink); }
+
+  .nav-gh {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted) !important;
+    font-size: 0.875rem;
+  }
+
+  .nav-gh svg { width: 16px; height: 16px; fill: currentColor; }
+
+  /* HERO */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6rem 2rem 4rem;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 0.3rem 0.85rem;
+    margin-bottom: 2.5rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.1s forwards;
+  }
+
+  .badge-dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  h1 {
+    font-size: clamp(2.4rem, 5vw, 3.5rem);
+    font-weight: 500;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+    text-align: center;
+    max-width: 700px;
+    margin-bottom: 1.4rem;
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.2s forwards;
+  }
+
+  h1 em {
+    font-style: normal;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  .sub {
+    font-size: 1.05rem;
+    color: var(--muted);
+    font-weight: 300;
+    text-align: center;
+    max-width: 480px;
+    margin-bottom: 3.5rem;
+    line-height: 1.65;
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.3s forwards;
+  }
+
+  /* INSTALL BLOCK */
+  .install-wrap {
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.45s forwards;
+    margin-bottom: 3.5rem;
+  }
+
+  .install-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .install {
+    background: var(--code-bg);
+    border-radius: 10px;
+    padding: 0 1.8rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: 52px;
+    position: relative;
+    min-width: 420px;
+    cursor: pointer;
+    border: 1px solid var(--install-border);
+    transition: border-color 0.2s;
+  }
+
+  .install:hover { border-color: var(--install-hover); }
+
+  .prompt {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--code-prompt);
+    user-select: none;
+  }
+
+  .cmd {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--code-fg);
+    flex: 1;
+  }
+
+  .cmd .typed { display: inline; }
+
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--code-cursor);
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+  }
+
+  .copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.3rem;
+    color: var(--code-prompt);
+    transition: color 0.15s;
+    display: flex;
+    align-items: center;
+  }
+  .copy-btn:hover { color: var(--code-fg); }
+  .copy-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+  .copy-toast {
+    position: absolute;
+    right: -70px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--green);
+    opacity: 0;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+  .copy-toast.show { opacity: 1; }
+
+  /* TABS */
+  .pkg-tabs {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: center;
+    margin-bottom: 0.85rem;
+  }
+
+  .tab {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0.25rem 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.03em;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active {
+    color: var(--ink);
+    border-color: var(--border);
+    background: var(--tab-active-bg);
+  }
+
+  /* CTA */
+  .cta-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.55s forwards;
+  }
+
+  .btn-docs {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--btn-docs-fg);
+    background: var(--btn-docs-bg);
+    border: none;
+    border-radius: 8px;
+    padding: 0.65rem 1.4rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .btn-docs:hover { background: var(--btn-docs-hover); }
+
+  .btn-ghost {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: color 0.15s;
+  }
+  .btn-ghost:hover { color: var(--ink); }
+
+  .btn-ghost svg { width: 14px; height: 14px; fill: currentColor; }
+
+  /* FEATURE ROW */
+  .features {
+    display: flex;
+    gap: 2.5rem;
+    margin-top: 6rem;
+    padding-top: 3rem;
+    border-top: 1px solid var(--border);
+    max-width: 760px;
+    width: 100%;
+    opacity: 0;
+    animation: fadeUp 0.5s ease 0.7s forwards;
+  }
+
+  .feat {
+    flex: 1;
+    text-align: left;
+  }
+
+  .feat-icon {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    color: #e67e22;
+    margin-bottom: 0.6rem;
+    letter-spacing: 0.05em;
+  }
+
+  .feat h3 {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.4rem;
+    letter-spacing: -0.01em;
+  }
+
+  .feat p {
+    font-size: 0.825rem;
+    color: var(--muted);
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  /* FOOTER */
+  footer {
+    padding: 2rem 3rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  footer p {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  footer a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.8rem;
+    transition: color 0.15s;
+  }
+  footer a:hover { color: var(--ink); }
+
+  footer nav { border: none; padding: 0; display: flex; gap: 1.5rem; }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 640px) {
+    nav { padding: 1.2rem 1.5rem; }
+    nav ul { gap: 1.5rem; }
+    main { padding: 4rem 1.5rem 3rem; }
+    .install { min-width: 0; width: 100%; }
+    .features { flex-direction: column; gap: 2rem; margin-top: 4rem; }
+    footer { flex-direction: column; gap: 1rem; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div style="display:flex; align-items:center; gap:0.75rem;">
+    <a class="logo" href="#">plit<span>.</span>ai</a>
+    <a href="https://github.com/theuselessai/plit/releases" style="text-decoration:none;">
+      <img id="shieldBadge" src="https://img.shields.io/github/v/release/theuselessai/plit?style=flat&labelColor=fafaf9&color=16a34a" alt="version" style="height:18px; vertical-align:middle;">
+    </a>
+  </div>
+  <ul>
+    <li><a href="https://pipelit.theuseless.ai/">Docs</a></li>
+    <li><a href="https://github.com/theuselessai/plit">GitHub</a>
+    </li>
+  </ul>
+</nav>
+
+<main>
+  <h1>Less noise. More control.<br><em>Automate the rest.</em></h1>
+
+  <p class="sub">
+    Orchestrate multi-agent workflows from your terminal.
+    Open-source, composable, and built to stay out of your way.
+  </p>
+
+  <div class="install-wrap">
+    <div class="pkg-tabs" id="tabs">
+      <button class="tab active" data-cmd='curl -fsSL plit.ai/sh | sh'>curl</button>
+      <button class="tab" data-cmd='cargo install plit'>cargo</button>
+    </div>
+
+    <div class="install" id="installBox" title="Click to copy">
+      <span class="prompt">$</span>
+      <span class="cmd"><span class="typed" id="typed"></span><span class="cursor" id="cursor"></span></span>
+      <button class="copy-btn" id="copyBtn" aria-label="Copy command">
+        <svg viewBox="0 0 16 16"><path d="M4 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2V9h-1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3V2H4Zm5 0v1h3v3h1V3a1 1 0 0 0-1-1H9Zm1 5H8v2H6v2h2v2h2v-2h2v-2h-2V7Z"/></svg>
+      </button>
+      <span class="copy-toast" id="toast">copied!</span>
+    </div>
+  </div>
+
+  <div class="cta-row">
+    <a class="btn-docs" href="https://pipelit.theuseless.ai/">Read the docs</a>
+    <a class="btn-ghost" href="https://github.com/theuselessai/plit">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      theuselessai/pipelit
+    </a>
+  </div>
+
+  <div class="features">
+    <div class="feat">
+      <div class="feat-icon">01 —</div>
+      <h3>Terminal-first</h3>
+      <p>A Rust-native TUI built for keyboard-driven workflows. No browser required.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">02 —</div>
+      <h3>Information membrane</h3>
+      <p>Absorbs and prioritises signal across channels. Only what matters reaches you.</p>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">03 —</div>
+      <h3>Composable skills</h3>
+      <p>Define reusable agent behaviours in a simple DSL. Run, chain, approve.</p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>plit.ai</p>
+  <nav>
+    <a href="https://github.com/theuselessai/plit">GitHub</a>
+    <a href="https://pipelit.theuseless.ai/">Docs</a>
+    <a href="https://pipelit.theuseless.ai/changelog/">Changelog</a>
+  </nav>
+</footer>
+
+<script>
+  const commands = {
+    curl:  'curl -fsSL plit.ai/sh | sh',
+    cargo: 'cargo install plit',
+  };
+
+  let currentCmd = commands.curl;
+  let typingTimer = null;
+
+  function typeText(text, el, onDone) {
+    el.textContent = '';
+    let i = 0;
+    clearInterval(typingTimer);
+    typingTimer = setInterval(() => {
+      el.textContent += text[i++];
+      if (i >= text.length) {
+        clearInterval(typingTimer);
+        if (onDone) onDone();
+      }
+    }, 28);
+  }
+
+  const typed = document.getElementById('typed');
+  const cursor = document.getElementById('cursor');
+
+  // Initial type after animation
+  setTimeout(() => typeText(currentCmd, typed), 600);
+
+  // Tabs
+  document.getElementById('tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentCmd = tab.dataset.cmd;
+    typeText(currentCmd, typed);
+  });
+
+  // Copy
+  const copyBtn = document.getElementById('copyBtn');
+  const toast = document.getElementById('toast');
+  const installBox = document.getElementById('installBox');
+
+  function doCopy() {
+    navigator.clipboard.writeText(currentCmd).then(() => {
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1800);
+    });
+  }
+
+  copyBtn.addEventListener('click', e => { e.stopPropagation(); doCopy(); });
+  installBox.addEventListener('click', doCopy);
+
+  // Update shield badge colors for dark mode
+  const shieldBadge = document.getElementById('shieldBadge');
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (isDark) {
+    shieldBadge.src = 'https://img.shields.io/github/v/release/theuselessai/plit?style=flat&labelColor=0a0a0a&color=22c55e';
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    shieldBadge.src = e.matches
+      ? 'https://img.shields.io/github/v/release/theuselessai/plit?style=flat&labelColor=0a0a0a&color=22c55e'
+      : 'https://img.shields.io/github/v/release/theuselessai/plit?style=flat&labelColor=fafaf9&color=16a34a';
+  });
+</script>
+</body>
+</html>
