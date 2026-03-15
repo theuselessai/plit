@@ -22,6 +22,7 @@ jobs:
       pipelit_version: ${{ steps.versions.outputs.pipelit }}
       plit_version: ${{ steps.versions.outputs.plit }}
       plit_gw_version: ${{ steps.versions.outputs.plit_gw }}
+      plit_tui_version: ${{ steps.versions.outputs.plit_tui }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +44,7 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "plit=$PLIT" >> "$GITHUB_OUTPUT"
           echo "plit_gw=$PLIT_GW" >> "$GITHUB_OUTPUT"
+          echo "plit_tui=$PLIT_TUI" >> "$GITHUB_OUTPUT"
           echo "pipelit=$PIPELIT" >> "$GITHUB_OUTPUT"
 
   # RC: build Docker image, run full E2E, push to GHCR
@@ -166,8 +168,9 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/plit dist/
           cp target/${{ matrix.target }}/release/plit-gw dist/
-          chmod +x dist/plit dist/plit-gw
-          tar czf ${{ matrix.artifact }}.tar.gz -C dist plit plit-gw
+          cp target/${{ matrix.target }}/release/plit-tui dist/
+          chmod +x dist/plit dist/plit-gw dist/plit-tui
+          tar czf ${{ matrix.artifact }}.tar.gz -C dist plit plit-gw plit-tui
 
       - name: Package binaries (Windows)
         if: runner.os == 'Windows'
@@ -176,7 +179,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item target/${{ matrix.target }}/release/plit.exe dist/
           Copy-Item target/${{ matrix.target }}/release/plit-gw.exe dist/
-          Compress-Archive -Path dist/plit.exe, dist/plit-gw.exe -DestinationPath ${{ matrix.artifact }}.zip
+          Copy-Item target/${{ matrix.target }}/release/plit-tui.exe dist/
+          Compress-Archive -Path dist/plit.exe, dist/plit-gw.exe, dist/plit-tui.exe -DestinationPath ${{ matrix.artifact }}.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -252,6 +256,7 @@ jobs:
             |-----------|---------|
             | plit | ${{ needs.meta.outputs.plit_version }} |
             | plit-gw | ${{ needs.meta.outputs.plit_gw_version }} |
+            | plit-tui | ${{ needs.meta.outputs.plit_tui_version }} |
             | Pipelit | ${{ needs.meta.outputs.pipelit_version }} |
 
             ## Install
