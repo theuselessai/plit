@@ -1,6 +1,6 @@
 [package]
 name = "plit"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2024"
 description = "Pipelit ecosystem CLI and gateway — install, start, and chat with AI agents"
 license = "Apache-2.0"
@@ -26,7 +26,7 @@ path = "src/tui_main.rs"
 plit-gw = "0.3.2"
 
 # TUI
-plit-tui = "0.1.1"
+plit-tui = "0.1.2"
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }

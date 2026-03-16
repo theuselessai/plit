@@ -1983,7 +1983,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plit"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2034,9 +2034,9 @@ dependencies = [
 
 [[package]]
 name = "plit-tui"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "695c58f094de508f8d9af4f55ca290cde6add7495adbef2a88a59249841d20a0"
+checksum = "9df150e772eb6cd0a53d43d5eb564b63af48066d4361ff9840b6111fd9499433"
 dependencies = [
  "anyhow",
  "chrono",
