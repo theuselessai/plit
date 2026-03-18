@@ -25,6 +25,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV HOME=/root
+ENV FRONTEND_DIST_PATH=/app/frontend/dist
 
 RUN mkdir -p /root/.config/plit /root/.local/share/plit
 
@@ -32,7 +33,7 @@ COPY --from=rust-builder /build/target/release/plit /usr/local/bin/plit
 COPY --from=rust-builder /build/target/release/plit-gw /usr/local/bin/plit-gw
 
 COPY --from=pipelit-source /pipelit /root/.local/share/plit/pipelit
-COPY --from=node-builder /frontend/dist /root/.local/share/plit/pipelit/platform/frontend/dist
+COPY --from=node-builder /frontend/dist /app/frontend/dist
 
 RUN python3 -m venv /root/.local/share/plit/venv && \
     /root/.local/share/plit/venv/bin/pip install --no-cache-dir \
