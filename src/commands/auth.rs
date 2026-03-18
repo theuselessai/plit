@@ -2,6 +2,10 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Subcommand;
+use pipelit_client::apis::auth_api;
+use pipelit_client::apis::configuration::Configuration;
+use pipelit_client::apis::Error as ApiError;
+use pipelit_client::models::{MfaLoginVerifyRequest, TokenRequest};
 use serde::{Deserialize, Serialize};
 
 use super::init::config::config_dir;
@@ -81,6 +85,32 @@ fn clear_auth() -> Result<()> {
     Ok(())
 }
 
+/// Build a pipelit-client Configuration from stored auth.
+/// Used by `plit api` subcommands and anything that needs authenticated API access.
+pub fn pipelit_config() -> Result<Configuration> {
+    let auth = load_auth().context("Not logged in. Run `plit auth login` first.")?;
+    Ok(Configuration {
+        base_path: auth.pipelit_url,
+        bearer_access_token: Some(auth.token),
+        ..Configuration::default()
+    })
+}
+
+fn anon_config(url: &str) -> Configuration {
+    Configuration {
+        base_path: url.trim_end_matches('/').to_string(),
+        ..Configuration::default()
+    }
+}
+
+fn authed_config(url: &str, token: &str) -> Configuration {
+    Configuration {
+        base_path: url.trim_end_matches('/').to_string(),
+        bearer_access_token: Some(token.to_string()),
+        ..Configuration::default()
+    }
+}
+
 pub async fn run(cmd: AuthCommands) -> Result<()> {
     match cmd {
         AuthCommands::Login {
@@ -100,10 +130,8 @@ async fn login(
     password_arg: Option<String>,
     token_arg: Option<String>,
 ) -> Result<()> {
-    let client = reqwest::Client::new();
-
     let (key, username) = if let Some(token) = token_arg {
-        let username = verify_token(&client, url, &token).await?;
+        let username = verify_token(url, &token).await?;
         (token, username)
     } else {
         let username = match username_arg {
@@ -120,11 +148,11 @@ async fn login(
                 .interact()?,
         };
 
-        let key = authenticate(&client, url, &username, &password).await?;
+        let key = authenticate(url, &username, &password).await?;
         (key, username)
     };
 
-    verify_token(&client, url, &key).await?;
+    verify_token(url, &key).await?;
 
     save_auth(&AuthConfig {
         token: key,
@@ -136,112 +164,74 @@ async fn login(
     Ok(())
 }
 
-async fn authenticate(
-    client: &reqwest::Client,
-    url: &str,
-    username: &str,
-    password: &str,
-) -> Result<String> {
-    let resp = client
-        .post(format!("{}/api/v1/auth/token/", url))
-        .json(&serde_json::json!({"username": username, "password": password}))
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_connect() {
-                anyhow::anyhow!("Cannot connect to {url}. Is the server running?")
-            } else {
-                anyhow::anyhow!("Request failed: {e}")
+async fn authenticate(url: &str, username: &str, password: &str) -> Result<String> {
+    let config = anon_config(url);
+    let req = TokenRequest::new(username.to_string(), password.to_string());
+
+    let resp = auth_api::obtain_token_api_v1_auth_token_post(&config, req).await;
+
+    match resp {
+        Ok(token_resp) => {
+            if token_resp.requires_mfa.unwrap_or(false) {
+                return handle_mfa(url, username, &token_resp.key).await;
             }
-        })?;
-
-    let status = resp.status();
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        anyhow::bail!("Invalid credentials");
+            Ok(token_resp.key)
+        }
+        Err(ApiError::Reqwest(e)) if e.is_connect() => {
+            anyhow::bail!("Cannot connect to {url}. Is the server running?")
+        }
+        Err(ApiError::ResponseError(e)) if e.status == reqwest::StatusCode::UNAUTHORIZED => {
+            anyhow::bail!("Invalid credentials")
+        }
+        Err(ApiError::ResponseError(e)) => {
+            anyhow::bail!("Login failed (HTTP {}): {}", e.status, e.content)
+        }
+        Err(e) => anyhow::bail!("Login failed: {e}"),
     }
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Login failed (HTTP {status}): {body}");
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse login response")?;
-    let requires_mfa = body["requires_mfa"].as_bool().unwrap_or(false);
-    let key = body["key"]
-        .as_str()
-        .context("Missing 'key' in login response")?
-        .to_string();
-
-    if requires_mfa {
-        return handle_mfa(client, url, username, &key).await;
-    }
-
-    Ok(key)
 }
 
-async fn handle_mfa(
-    client: &reqwest::Client,
-    url: &str,
-    username: &str,
-    _initial_key: &str,
-) -> Result<String> {
+async fn handle_mfa(url: &str, username: &str, _initial_key: &str) -> Result<String> {
     let code: String = dialoguer::Input::new()
         .with_prompt("MFA code")
         .interact_text()?;
 
-    let resp = client
-        .post(format!("{}/api/v1/auth/mfa/login-verify/", url))
-        .json(&serde_json::json!({"username": username, "code": code}))
-        .send()
-        .await
-        .map_err(|e| anyhow::anyhow!("MFA verification request failed: {e}"))?;
+    let config = anon_config(url);
+    let req = MfaLoginVerifyRequest::new(username.to_string(), code);
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("MFA verification failed (HTTP {status}): {body}");
+    let resp =
+        auth_api::mfa_login_verify_api_v1_auth_mfa_login_verify_post(&config, req).await;
+
+    match resp {
+        Ok(token_resp) => Ok(token_resp.key),
+        Err(ApiError::ResponseError(e)) => {
+            anyhow::bail!("MFA verification failed (HTTP {}): {}", e.status, e.content)
+        }
+        Err(e) => anyhow::bail!("MFA verification failed: {e}"),
     }
-
-    let body: serde_json::Value = resp.json().await.context("Failed to parse MFA response")?;
-    body["key"]
-        .as_str()
-        .map(String::from)
-        .context("Missing 'key' in MFA response")
 }
 
-async fn verify_token(client: &reqwest::Client, url: &str, token: &str) -> Result<String> {
-    let resp = client
-        .get(format!("{}/api/v1/auth/me/", url))
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_connect() {
-                anyhow::anyhow!("Cannot connect to {url}. Is the server running?")
-            } else {
-                anyhow::anyhow!("Request failed: {e}")
-            }
-        })?;
+async fn verify_token(url: &str, token: &str) -> Result<String> {
+    let config = authed_config(url, token);
 
-    let status = resp.status();
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        anyhow::bail!("Token expired or invalid. Run `plit auth login` again.");
-    }
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Token verification failed (HTTP {status}): {body}");
-    }
+    let resp = auth_api::me_api_v1_auth_me_get(&config).await;
 
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse user info response")?;
-    body["username"]
-        .as_str()
-        .map(String::from)
-        .context("Missing 'username' in user info response")
+    match resp {
+        Ok(me) => Ok(me.username),
+        Err(ApiError::Reqwest(e)) if e.is_connect() => {
+            anyhow::bail!("Cannot connect to {url}. Is the server running?")
+        }
+        Err(ApiError::ResponseError(e)) if e.status == reqwest::StatusCode::UNAUTHORIZED => {
+            anyhow::bail!("Token expired or invalid. Run `plit auth login` again.")
+        }
+        Err(ApiError::ResponseError(e)) => {
+            anyhow::bail!(
+                "Token verification failed (HTTP {}): {}",
+                e.status,
+                e.content
+            )
+        }
+        Err(e) => anyhow::bail!("Token verification failed: {e}"),
+    }
 }
 
 async fn status() -> Result<()> {
@@ -253,30 +243,18 @@ async fn status() -> Result<()> {
         }
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{}/api/v1/auth/me/", auth.pipelit_url))
-        .header("Authorization", format!("Bearer {}", auth.token))
-        .send()
-        .await;
-
-    match resp {
-        Ok(r) if r.status().is_success() => {
+    let config = authed_config(&auth.pipelit_url, &auth.token);
+    match auth_api::me_api_v1_auth_me_get(&config).await {
+        Ok(_) => {
             output::status(&format!(
                 "Logged in as {} at {}",
                 auth.username, auth.pipelit_url
             ));
         }
-        Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
+        Err(ApiError::ResponseError(e)) if e.status == reqwest::StatusCode::UNAUTHORIZED => {
             output::status("Token expired or invalid. Run `plit auth login` again.");
         }
-        Ok(r) => {
-            output::status(&format!(
-                "Unexpected response (HTTP {}). Try `plit auth login` again.",
-                r.status()
-            ));
-        }
-        Err(e) if e.is_connect() => {
+        Err(ApiError::Reqwest(e)) if e.is_connect() => {
             output::status(&format!(
                 "Cannot reach {}. Server may be down.",
                 auth.pipelit_url

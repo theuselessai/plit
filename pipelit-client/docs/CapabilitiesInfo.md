@@ -1,0 +1,13 @@
+# CapabilitiesInfo
+
+## Properties
+
+Name | Type | Description | Notes
+------------ | ------------- | ------------- | -------------
+**runtimes** | [**std::collections::HashMap<String, models::RuntimeInfo>**](RuntimeInfo.md) |  | 
+**shell_tools** | [**std::collections::HashMap<String, models::ShellToolInfo>**](ShellToolInfo.md) |  | 
+**network** | [**models::NetworkInfo**](NetworkInfo.md) |  | 
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+
+

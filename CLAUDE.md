@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **plit** is the CLI and Docker image for the Pipelit ecosystem. It installs two binaries: `plit` (CLI) and `plit-gw` (gateway server). The Docker image bundles everything: plit, plit-gw, Pipelit backend, DragonflyDB, and a React frontend.
 
+## Roadmap & Versioning
+
+**See `ROADMAP.md`** for the full project milestone plan.
+
+Milestones use PROJECT version (from `VERSION` file), not component versions. The GitHub project board at https://github.com/orgs/theuselessai/projects/1 tracks project-level milestones. Each component repo (plit, plit-gw, Pipelit) has matching milestones named `vX.Y.0`.
+
+Current: `PROJECT=0.4.3` | Next: **v0.5.0** (Workflow Creation & API Client)
+
 ## Tools
 - `gh` CLI is configured and working for GitHub operations (PRs, checks, merges, etc.)
 
