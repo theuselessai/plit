@@ -85,8 +85,7 @@ fn clear_auth() -> Result<()> {
     Ok(())
 }
 
-/// Build a pipelit-client Configuration from stored auth.
-/// Used by `plit api` subcommands and anything that needs authenticated API access.
+#[allow(dead_code)]
 pub fn pipelit_config() -> Result<Configuration> {
     let auth = load_auth().context("Not logged in. Run `plit auth login` first.")?;
     Ok(Configuration {
