@@ -108,6 +108,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout plit (for e2e scripts)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: e2e
+
       - name: Checkout Pipelit (for mock LLM server)
         uses: actions/checkout@v4
         with:
@@ -164,13 +169,10 @@ jobs:
           sys.exit(1)
           "
 
-      - name: Test plit auth login/status/logout
+      - name: API client E2E tests
         run: |
-          ./plit auth login --url http://localhost:8000 --username admin --password testpass123
-          ./plit auth status
-          ./plit auth logout
-          ./plit auth status 2>&1 | grep -q "Not logged in"
-          echo "Auth commands passed"
+          chmod +x e2e/api-client.sh
+          PIPELIT_URL=http://localhost:8000 PIPELIT_USER=admin PIPELIT_PASS=testpass123 ./e2e/api-client.sh ./plit
 
       - name: Auth and send chat message
         run: |

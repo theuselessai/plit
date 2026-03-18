@@ -1,0 +1,101 @@
+name: Regenerate API Client
+
+on:
+  # Triggered by Pipelit stable release (repository_dispatch from Pipelit repo)
+  repository_dispatch:
+    types: [pipelit-release]
+  # Or manually
+  workflow_dispatch:
+    inputs:
+      pipelit_version:
+        description: 'Pipelit version tag (e.g. v0.3.9)'
+        required: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            VERSION="${{ github.event.inputs.pipelit_version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Pipelit version: $VERSION"
+
+      - name: Download OpenAPI spec from release
+        run: |
+          gh release download "${{ steps.version.outputs.version }}" \
+            --repo theuselessai/Pipelit \
+            --pattern "openapi.json" \
+            --dir /tmp \
+            || { echo "No openapi.json in release, fetching from Docker image..."; \
+                 docker run --rm -d --name pipelit-spec \
+                   -p 18000:8000 \
+                   -e ADMIN_USERNAME=admin \
+                   -e ADMIN_PASSWORD=specgen \
+                   ghcr.io/theuselessai/plit:latest; \
+                 sleep 10; \
+                 curl -sf http://localhost:18000/openapi.json > /tmp/openapi.json; \
+                 docker stop pipelit-spec; }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Generate client
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v /tmp/openapi.json:/spec/openapi.json:ro \
+            -v ${{ github.workspace }}/pipelit-client:/out \
+            openapitools/openapi-generator-cli:latest generate \
+            -i /spec/openapi.json \
+            -g rust \
+            -o /out \
+            --library reqwest \
+            --additional-properties=packageName=pipelit-client,supportAsync=true
+
+      - name: Restore Cargo.toml
+        run: git checkout pipelit-client/Cargo.toml
+
+      - name: Post-generation fixups
+        run: |
+          # Replace broken AnyOf types with serde_json::Value
+          find pipelit-client/src -name '*.rs' -exec \
+            sed -i 's/Option<Option<Box<models::AnyOfLessThanGreaterThan>>>/Option<serde_json::Value>/g' {} +
+          # Remove double_option serde attrs on fixed fields
+          find pipelit-client/src -name '*.rs' -exec \
+            sed -i 's/, default, with = "::serde_with::rust::double_option"//g' {} +
+          # Clean generator artifacts
+          rm -rf pipelit-client/.openapi-generator pipelit-client/.travis.yml \
+            pipelit-client/git_push.sh pipelit-client/.openapi-generator-ignore
+
+      - name: Format and verify
+        run: |
+          cargo fmt --manifest-path pipelit-client/Cargo.toml
+          cargo build --manifest-path pipelit-client/Cargo.toml
+          cargo clippy --manifest-path pipelit-client/Cargo.toml -- -D warnings || true
+
+      - name: Create PR
+        run: |
+          BRANCH="chore/regenerate-client-${{ steps.version.outputs.version }}"
+          git checkout -b "$BRANCH"
+          git add pipelit-client/
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: regenerate pipelit-client from Pipelit ${{ steps.version.outputs.version }}" || exit 0
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: regenerate API client for Pipelit ${{ steps.version.outputs.version }}" \
+            --body "Auto-generated from Pipelit OpenAPI spec ${{ steps.version.outputs.version }}. Triggered by: ${{ github.event_name }}" \
+            --base main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
