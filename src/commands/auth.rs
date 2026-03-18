@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Subcommand;
+use pipelit_client::apis::Error as ApiError;
 use pipelit_client::apis::auth_api;
 use pipelit_client::apis::configuration::Configuration;
-use pipelit_client::apis::Error as ApiError;
 use pipelit_client::models::{MfaLoginVerifyRequest, TokenRequest};
 use serde::{Deserialize, Serialize};
 
@@ -198,8 +198,7 @@ async fn handle_mfa(url: &str, username: &str, _initial_key: &str) -> Result<Str
     let config = anon_config(url);
     let req = MfaLoginVerifyRequest::new(username.to_string(), code);
 
-    let resp =
-        auth_api::mfa_login_verify_api_v1_auth_mfa_login_verify_post(&config, req).await;
+    let resp = auth_api::mfa_login_verify_api_v1_auth_mfa_login_verify_post(&config, req).await;
 
     match resp {
         Ok(token_resp) => Ok(token_resp.key),
