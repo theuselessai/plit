@@ -39,5 +39,8 @@ fi
 # --- Step 2: Assemble config from fragments ---
 "$SCRIPT_DIR/assemble-config.sh"
 
-# --- Step 3: Start agentgateway ---
-exec "$SCRIPT_DIR/bin/agentgateway" -f "$SCRIPT_DIR/config.yaml" "$@"
+# --- Step 3: Convert YAML to JSON (workaround for serde_yaml untagged enum bug) ---
+$YQ eval -o=json '.' "$SCRIPT_DIR/config.yaml" > "$SCRIPT_DIR/config.json"
+
+# --- Step 4: Start agentgateway ---
+exec "$SCRIPT_DIR/bin/agentgateway" -c "$(cat "$SCRIPT_DIR/config.json")" "$@"
