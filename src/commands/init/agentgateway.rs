@@ -346,7 +346,7 @@ provider:
 hostOverride: \"{hostname}\"
 pathOverride: \"{path_override}\"
 backendAuth:
-  apiKey:
+  key:
     envKey: \"{env_var}\"
 backendTLS:
   sni: \"{hostname}\"
