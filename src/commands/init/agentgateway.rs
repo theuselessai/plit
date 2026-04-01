@@ -170,7 +170,7 @@ fn write_llm_listener_yaml(agw_dir: &Path) -> Result<()> {
         "\
 listeners:
   - name: llm
-    protocol: LLM
+    protocol: HTTP
     address: \"0.0.0.0:4000\"
     routes: []
     authentication:
@@ -188,7 +188,7 @@ fn write_mcp_listener_yaml(agw_dir: &Path) -> Result<()> {
     let content = "\
 listeners:
   - name: mcp
-    protocol: MCP
+    protocol: HTTP
     address: \"0.0.0.0:3000\"
     routes:
       - name: mcp-route
@@ -294,7 +294,8 @@ fn write_initial_provider(inputs: &UserInputs, agw_dir: &Path) -> Result<()> {
             }
             // Derive a provider name from the base URL hostname
             let name = provider_name_from_url(&inputs.llm_base_url);
-            write_provider_yaml(agw_dir, &name, "openAI", &inputs.llm_base_url, "/v1/")?;
+            let path = extract_path(&inputs.llm_base_url);
+            write_provider_yaml(agw_dir, &name, "openAI", &inputs.llm_base_url, &path)?;
             write_model_yaml(agw_dir, &name, &inputs.llm_model)?;
             write_encrypted_key(agw_dir, &name, &inputs.llm_api_key)?;
             output::status(&format!(
@@ -334,24 +335,26 @@ fn write_provider_yaml(
     // Build env var name from provider name
     let env_var = format!("{}_API_KEY", name.to_uppercase().replace('-', "_"));
 
+    // Extract just the hostname for hostOverride and SNI
+    let hostname = extract_host(host);
+
     let content = format!(
         "\
 provider:
   {provider_type}:
     model: \"\"
-hostOverride: \"{host}\"
+hostOverride: \"{hostname}\"
 pathOverride: \"{path_override}\"
 backendAuth:
   apiKey:
     envKey: \"{env_var}\"
 backendTLS:
-  sni: \"{sni}\"
+  sni: \"{hostname}\"
 ",
         provider_type = provider_type,
-        host = host,
+        hostname = hostname,
         path_override = path_override,
         env_var = env_var,
-        sni = extract_host(host),
     );
 
     let path = provider_dir.join("_provider.yaml");
@@ -419,4 +422,15 @@ fn extract_host(url: &str) -> String {
         .next()
         .unwrap_or(url)
         .to_string()
+}
+
+/// Extract path from a URL (e.g., "https://api.venice.ai/api/v1" -> "/api/v1/").
+fn extract_path(url: &str) -> String {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    let path = after_scheme
+        .find('/')
+        .map(|i| &after_scheme[i..])
+        .unwrap_or("/");
+    let path = path.trim_end_matches('/');
+    format!("{}/", path)
 }
