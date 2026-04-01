@@ -39,8 +39,31 @@ fi
 # --- Step 2: Assemble config from fragments ---
 "$SCRIPT_DIR/assemble-config.sh"
 
-# --- Step 3: Convert YAML to JSON (workaround for serde_yaml untagged enum bug) ---
-$YQ eval -o=json '.' "$SCRIPT_DIR/config.yaml" > "$SCRIPT_DIR/config.json"
+# --- Step 3: Assemble final config ---
+# Convert YAML to JSON (workaround for serde_yaml untagged enum bug with -f).
+# Then resolve env: references to inline values since -f doesn't support env.
+$YQ eval -o=json '.' "$SCRIPT_DIR/config.yaml" > "$SCRIPT_DIR/config.tmp.json"
+
+# Replace {"env":"VAR_NAME"} with the actual env var value as a plain string
+"${PYTHON}" -c "
+import json, os, sys
+with open('$SCRIPT_DIR/config.tmp.json') as f:
+    data = json.load(f)
+
+def resolve_env(obj):
+    if isinstance(obj, dict):
+        if set(obj.keys()) == {'env'} and isinstance(obj['env'], str):
+            return os.environ.get(obj['env'], '')
+        return {k: resolve_env(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [resolve_env(v) for v in obj]
+    return obj
+
+data = resolve_env(data)
+with open('$SCRIPT_DIR/config.json', 'w') as f:
+    json.dump(data, f)
+"
+rm -f "$SCRIPT_DIR/config.tmp.json"
 
 # --- Step 4: Start agentgateway ---
 exec "$SCRIPT_DIR/bin/agentgateway" -f "$SCRIPT_DIR/config.json" "$@"
