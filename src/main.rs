@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use commands::api::ApiCommands;
 use commands::auth::AuthCommands;
 
 mod client;
@@ -39,6 +40,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Pipelit API operations (workflows, nodes, etc.)
+    #[command(subcommand)]
+    Api(ApiCommands),
+
     /// Local gateway commands — chat, send, and listen via the generic adapter
     #[command(subcommand)]
     Local(LocalCommands),
@@ -248,6 +253,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match cli.command {
+        Commands::Api(cmd) => commands::api::run(cmd, json_output).await,
+
         Commands::Local(local_cmd) => match local_cmd {
             LocalCommands::Chat {
                 credential_id,

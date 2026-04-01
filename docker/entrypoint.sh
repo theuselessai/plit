@@ -23,5 +23,34 @@ if [ ! -f "$CONFIG_FILE" ]; then
     eval plit init $INIT_ARGS
 fi
 
+# Start agentgateway if configured
+AGW_DIR=$(grep AGENTGATEWAY_DIR /root/.config/plit/.env 2>/dev/null | cut -d= -f2)
+if [ -n "$AGW_DIR" ] && [ -d "$AGW_DIR" ]; then
+    # Ensure binary is in place
+    if [ ! -f "$AGW_DIR/bin/agentgateway" ]; then
+        mkdir -p "$AGW_DIR/bin"
+        cp /usr/local/bin/agentgateway "$AGW_DIR/bin/agentgateway"
+    fi
+
+    # Get encryption key for key decryption
+    FIELD_ENCRYPTION_KEY=$(grep FIELD_ENCRYPTION_KEY /root/.config/plit/.env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"')
+
+    # Start agentgateway in background
+    echo "Starting agentgateway..."
+    cd "$AGW_DIR" && \
+      FIELD_ENCRYPTION_KEY="$FIELD_ENCRYPTION_KEY" \
+      PYTHON=/root/.local/share/plit/venv/bin/python3 \
+      YQ=yq \
+      ./start.sh > /tmp/agw.log 2>&1 &
+
+    # Wait for agentgateway to be ready (up to 10 seconds)
+    for i in $(seq 1 10); do
+        curl -s -o /dev/null http://localhost:4000/ 2>/dev/null && break
+        sleep 1
+    done
+    echo "agentgateway started"
+    cd /
+fi
+
 echo "Starting plit stack..."
 exec plit start --foreground

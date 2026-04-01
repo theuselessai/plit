@@ -223,6 +223,38 @@ pub fn write_gateway_config(
     Ok(())
 }
 
+/// Append agentgateway env vars to the existing .env file.
+pub fn append_agentgateway_env(agw: &super::agentgateway::AgentgatewaySetup) -> Result<()> {
+    let path = dot_env_path()?;
+
+    // Escape the PEM key for .env — replace newlines with literal \n
+    let escaped_key = agw.jwt_private_key.trim().replace('\n', "\\n");
+
+    let content = format!(
+        "\n\
+# agentgateway integration
+AGENTGATEWAY_ENABLED=true
+AGENTGATEWAY_URL=http://localhost:4000
+AGENTGATEWAY_DIR={agw_dir}
+JWT_PRIVATE_KEY=\"{jwt_key}\"
+",
+        agw_dir = agw.agw_dir.display(),
+        jwt_key = escaped_key,
+    );
+
+    let mut existing = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    existing.push_str(&content);
+    std::fs::write(&path, &existing)
+        .with_context(|| format!("Failed to write {}", path.display()))?;
+
+    output::status(&format!(
+        "  * Appended agentgateway config to {}",
+        path.display()
+    ));
+    Ok(())
+}
+
 pub fn write_managed_markers() -> Result<()> {
     let marker = ".plit-managed";
 
