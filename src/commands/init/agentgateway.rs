@@ -168,10 +168,10 @@ fn write_llm_listener_yaml(agw_dir: &Path) -> Result<()> {
     let jwks_path = agw_dir.join("config.d/jwt/jwks.json");
     let content = format!(
         "\
+address: \"0.0.0.0:4000\"
 listeners:
   - name: llm
     protocol: HTTP
-    address: \"0.0.0.0:4000\"
     routes: []
     authentication:
       jwt:
@@ -186,10 +186,10 @@ listeners:
 
 fn write_mcp_listener_yaml(agw_dir: &Path) -> Result<()> {
     let content = "\
+address: \"0.0.0.0:3000\"
 listeners:
   - name: mcp
     protocol: HTTP
-    address: \"0.0.0.0:3000\"
     routes:
       - name: mcp-route
         matches:
