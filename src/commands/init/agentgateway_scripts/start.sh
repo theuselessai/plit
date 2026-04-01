@@ -43,4 +43,4 @@ fi
 $YQ eval -o=json '.' "$SCRIPT_DIR/config.yaml" > "$SCRIPT_DIR/config.json"
 
 # --- Step 4: Start agentgateway ---
-exec "$SCRIPT_DIR/bin/agentgateway" -c "$(cat "$SCRIPT_DIR/config.json")" "$@"
+exec "$SCRIPT_DIR/bin/agentgateway" -f "$SCRIPT_DIR/config.json" "$@"
