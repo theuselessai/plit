@@ -24,8 +24,15 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # Start agentgateway if configured
-AGW_DIR=$(grep AGENTGATEWAY_DIR /root/.config/plit/.env 2>/dev/null | cut -d= -f2)
+AGW_DIR=""
+PIPELIT_ENV="/root/.local/share/plit/pipelit/.env"
+if [ -f "$PIPELIT_ENV" ]; then
+    AGW_DIR=$(grep "^AGENTGATEWAY_DIR=" "$PIPELIT_ENV" | cut -d= -f2 | tr -d '"')
+fi
+
 if [ -n "$AGW_DIR" ] && [ -d "$AGW_DIR" ]; then
+    echo "Starting agentgateway..."
+
     # Ensure binary is in place
     if [ ! -f "$AGW_DIR/bin/agentgateway" ]; then
         mkdir -p "$AGW_DIR/bin"
@@ -33,23 +40,25 @@ if [ -n "$AGW_DIR" ] && [ -d "$AGW_DIR" ]; then
     fi
 
     # Get encryption key for key decryption
-    FIELD_ENCRYPTION_KEY=$(grep FIELD_ENCRYPTION_KEY /root/.config/plit/.env 2>/dev/null | head -1 | cut -d= -f2 | tr -d '"')
+    FIELD_ENC_KEY=$(grep "^FIELD_ENCRYPTION_KEY=" "$PIPELIT_ENV" | head -1 | cut -d= -f2 | tr -d '"')
 
     # Start agentgateway in background
-    echo "Starting agentgateway..."
-    cd "$AGW_DIR" && \
-      FIELD_ENCRYPTION_KEY="$FIELD_ENCRYPTION_KEY" \
-      PYTHON=/root/.local/share/plit/venv/bin/python3 \
-      YQ=yq \
-      ./start.sh > /tmp/agw.log 2>&1 &
+    (
+        cd "$AGW_DIR" && \
+        FIELD_ENCRYPTION_KEY="$FIELD_ENC_KEY" \
+        PYTHON=/root/.local/share/plit/venv/bin/python3 \
+        YQ=yq \
+        ./start.sh > /tmp/agw.log 2>&1
+    ) &
 
     # Wait for agentgateway to be ready (up to 10 seconds)
     for i in $(seq 1 10); do
-        curl -s -o /dev/null http://localhost:4000/ 2>/dev/null && break
+        if curl -s -o /dev/null http://localhost:4000/ 2>/dev/null; then
+            echo "agentgateway ready"
+            break
+        fi
         sleep 1
     done
-    echo "agentgateway started"
-    cd /
 fi
 
 echo "Starting plit stack..."
