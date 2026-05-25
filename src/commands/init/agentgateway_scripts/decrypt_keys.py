@@ -49,14 +49,27 @@ def main() -> None:
             print(f"export {name}={kf.read_text().strip()}")
         return
 
-    fernet = Fernet(enc_key.encode())
+    try:
+        fernet = Fernet(enc_key.encode())
+    except Exception:
+        # Invalid Fernet key — fall back to plaintext for all files
+        print("Warning: FIELD_ENCRYPTION_KEY is invalid, reading keys as plaintext", file=sys.stderr)
+        for kf in sorted(keys_dir.glob("*.key")):
+            name = _name_to_env_var(kf.stem)
+            print(f"export {name}={kf.read_text().strip()}")
+        return
+
     for kf in sorted(keys_dir.glob("*.key")):
         name = _name_to_env_var(kf.stem)
         try:
             decrypted = fernet.decrypt(kf.read_bytes()).decode()
             print(f"export {name}={decrypted}")
         except Exception as e:
-            print(f"Warning: Failed to decrypt {kf.name}: {e}", file=sys.stderr)
+            # Fall back to reading as plaintext
+            plaintext = kf.read_text().strip()
+            if plaintext:
+                print(f"export {name}={plaintext}")
+            print(f"Warning: Failed to decrypt {kf.name}, using as plaintext: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

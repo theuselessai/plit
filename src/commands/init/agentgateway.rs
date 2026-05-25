@@ -120,7 +120,7 @@ jwks = {
         "y": b64url(y_bytes),
         "use": "sig",
         "alg": "ES256",
-        "kid": "pipelit-1"
+        "kid": "pipelit-001"
     }]
 }
 
@@ -170,13 +170,17 @@ fn write_llm_listener_yaml(agw_dir: &Path) -> Result<()> {
         "\
 port: 4000
 listeners:
-  - name: llm
-    protocol: HTTP
-    routes: []
-    authentication:
-      jwt:
-        localJwks:
-          filename: \"{jwks_path}\"
+- name: llm
+  policies:
+    jwtAuth:
+      mode: strict
+      issuer: pipelit
+      audiences: [agentgateway]
+      jwks:
+        file: \"{jwks_path}\"
+      jwtValidationOptions:
+        requiredClaims: []
+  routes: []
 ",
         jwks_path = jwks_path.display()
     );
@@ -188,14 +192,14 @@ fn write_mcp_listener_yaml(agw_dir: &Path) -> Result<()> {
     let content = "\
 port: 3000
 listeners:
-  - name: mcp
-    protocol: HTTP
-    routes:
-      - name: mcp-route
-        matches:
-          - path:
-              pathPrefix: /
-        backends: []
+- name: mcp
+  routes:
+  - policies:
+      cors:
+        allowOrigins: ['*']
+        allowHeaders: [mcp-protocol-version, content-type, cache-control]
+        exposeHeaders: [Mcp-Session-Id]
+    backends: []
 ";
     let path = agw_dir.join("config.d/listeners/mcp.yaml");
     std::fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
@@ -294,7 +298,7 @@ fn write_initial_provider(inputs: &UserInputs, agw_dir: &Path) -> Result<()> {
             }
             // Derive a provider name from the base URL hostname
             let name = provider_name_from_url(&inputs.llm_base_url);
-            let path = extract_path(&inputs.llm_base_url);
+            let path = extract_path(&inputs.llm_base_url, "openai-compatible");
             write_provider_yaml(agw_dir, &name, "openAI", &inputs.llm_base_url, &path)?;
             write_model_yaml(agw_dir, &name, &inputs.llm_model)?;
             write_encrypted_key(agw_dir, &name, &inputs.llm_api_key)?;
@@ -348,8 +352,7 @@ pathOverride: \"{path_override}\"
 backendAuth:
   key:
     env: \"{env_var}\"
-backendTLS:
-  sni: \"{hostname}\"
+backendTLS: {{}}
 ",
         provider_type = provider_type,
         hostname = hostname,
@@ -412,25 +415,51 @@ fn provider_name_from_url(url: &str) -> String {
         .replace('-', "_")
 }
 
-/// Extract hostname from a URL for SNI.
+/// Extract host:port from a URL. Adds default port if missing (443 for https, 80 for http).
 fn extract_host(url: &str) -> String {
-    url.trim_end_matches('/')
+    let is_https = url.starts_with("https://");
+    let host_part = url
+        .trim_end_matches('/')
         .split("://")
         .nth(1)
         .unwrap_or(url)
         .split('/')
         .next()
-        .unwrap_or(url)
-        .to_string()
+        .unwrap_or(url);
+    if host_part.contains(':') {
+        host_part.to_string()
+    } else if is_https {
+        format!("{host_part}:443")
+    } else {
+        format!("{host_part}:80")
+    }
 }
 
 /// Extract path from a URL (e.g., "https://api.venice.ai/api/v1" -> "/api/v1/").
-fn extract_path(url: &str) -> String {
+fn extract_path(url: &str, provider_type: &str) -> String {
     let after_scheme = url.split("://").nth(1).unwrap_or(url);
     let path = after_scheme
         .find('/')
         .map(|i| &after_scheme[i..])
         .unwrap_or("/");
     let path = path.trim_end_matches('/');
-    format!("{}/", path)
+    // Append endpoint suffix based on provider type
+    match provider_type {
+        "anthropic" => {
+            if path.ends_with("/messages") {
+                format!("{path}/")
+            } else {
+                format!("{path}/messages")
+            }
+        }
+        _ => {
+            // openai, openai-compatible, glm, gemini
+            if path.ends_with("/chat/completions") {
+                format!("{path}/")
+            } else {
+                format!("{path}/chat/completions")
+            }
+        }
+    }
 }
+// cache bust 1775094575
