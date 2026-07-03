@@ -201,6 +201,14 @@ pub async fn run_apply_fixture(
         .arg(&inputs.llm_base_url)
         .current_dir(pipelit_dir.join("platform"));
 
+    // Bridge the naming contract: tell pipelit the exact agentgateway route
+    // this provider/model will be reachable at, so the default node's
+    // backend_route matches what plit init creates (otherwise pipelit's
+    // proxied call 404s with "route not found").
+    if let Some(route) = super::agentgateway::initial_route_name(inputs) {
+        cmd.arg("--backend-route").arg(route);
+    }
+
     for (key, value) in &env_vars {
         cmd.env(key, value);
     }

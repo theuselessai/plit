@@ -326,6 +326,30 @@ fn write_initial_provider(inputs: &UserInputs, agw_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The agentgateway route name (`"<provider>-<model_slug>"`) that
+/// `write_initial_provider` + `assemble-config.sh` produce for the initial
+/// provider/model. plit init passes this to `apply-fixture --backend-route`
+/// so pipelit records it on the default model node and its proxied LLM calls
+/// hit the matching gateway route. Returns `None` for providers that create no
+/// route. NOTE: the provider arm here must stay in sync with
+/// `write_initial_provider` above.
+pub fn initial_route_name(inputs: &UserInputs) -> Option<String> {
+    let provider = match inputs.llm_provider.as_str() {
+        "openai" => "openai".to_string(),
+        "anthropic" => "anthropic".to_string(),
+        "gemini" => "gemini".to_string(),
+        "ollama" => "ollama".to_string(),
+        "openai-compatible" => {
+            if inputs.llm_base_url.is_empty() {
+                return None;
+            }
+            provider_name_from_url(&inputs.llm_base_url)
+        }
+        _ => return None,
+    };
+    Some(format!("{}-{}", provider, model_slug(&inputs.llm_model)))
+}
+
 fn write_provider_yaml(
     agw_dir: &Path,
     name: &str,
