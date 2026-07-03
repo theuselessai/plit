@@ -56,6 +56,9 @@ fi
 if [ -n "$AGW_DIR" ] && [ -d "$AGW_DIR" ]; then
     echo "Starting agentgateway..."
 
+    export AGENTGATEWAY_DIR="$AGW_DIR"
+    export AGENTGATEWAY_URL="${AGENTGATEWAY_URL:-http://localhost:4000}"
+
     # Ensure binary is in place
     if [ ! -f "$AGW_DIR/bin/agentgateway" ]; then
         mkdir -p "$AGW_DIR/bin"
@@ -79,14 +82,24 @@ if [ -n "$AGW_DIR" ] && [ -d "$AGW_DIR" ]; then
         ./start.sh > /tmp/agw.log 2>&1
     ) &
 
-    # Wait for agentgateway to be ready (up to 10 seconds)
-    for i in $(seq 1 10); do
-        if curl -s -o /dev/null http://localhost:4000/ 2>/dev/null; then
+    # Block until agentgateway is ready. agentgateway is a hard boot
+    # dependency — if it never comes up, plit must not start serving.
+    AGW_READY=false
+    AGW_READY_TIMEOUT=45
+    for i in $(seq 1 "$AGW_READY_TIMEOUT"); do
+        if curl -s -o /dev/null "$AGENTGATEWAY_URL/" 2>/dev/null; then
             echo "agentgateway ready"
+            AGW_READY=true
             break
         fi
         sleep 1
     done
+
+    if [ "$AGW_READY" != true ]; then
+        echo "FATAL: agentgateway did not become ready within ${AGW_READY_TIMEOUT}s (${AGENTGATEWAY_URL}) — refusing to start plit without it" >&2
+        cat /tmp/agw.log >&2 2>/dev/null || true
+        exit 1
+    fi
 fi
 
 echo "Starting plit stack..."
