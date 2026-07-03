@@ -98,8 +98,22 @@ for provider_dir in "$CONFIG_D"/backends/*/; do
             }]
         }")
 
-        # Set the model on the provider
-        route=$(echo "$route" | $YQ eval ".backends[0].ai.provider[][\"model\"] = \"${model_name}\"" -)
+        # Include backendTLS ONLY when the provider fragment declares it.
+        # agentgateway treats the mere presence of the policy (even {}) as
+        # "speak TLS to the upstream", which breaks plain-http backends
+        # (e.g. a LAN Qwen box or local Ollama) with InvalidContentType.
+        if [ "$(echo "$provider_config" | $YQ eval 'has("backendTLS")' -)" != "true" ]; then
+            route=$(echo "$route" | $YQ eval 'del(.policies.backendTLS)' -)
+        fi
+
+        # Set the model override ONLY when the model file specifies a real
+        # upstream model id. A missing/null model means pass-through:
+        # agentgateway forwards the caller's requested model unchanged. Writing
+        # a "null" (or empty) override would ship literal "null" upstream and
+        # 404. (agentgateway provider.<x>.model is a hard outbound override.)
+        if [ -n "$model_name" ] && [ "$model_name" != "null" ]; then
+            route=$(echo "$route" | $YQ eval ".backends[0].ai.provider[][\"model\"] = \"${model_name}\"" -)
+        fi
 
         # Inject authorization rules
         route=$(echo "$route" | $YQ eval-all '

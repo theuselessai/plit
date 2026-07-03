@@ -342,6 +342,17 @@ fn write_provider_yaml(
     // Extract just the hostname for hostOverride and SNI
     let hostname = extract_host(host);
 
+    // Emit backendTLS ONLY for TLS upstreams. agentgateway treats the mere
+    // presence of the policy (even {}) as "speak TLS to the upstream", which
+    // breaks plain-http backends (e.g. local Ollama or a LAN Qwen box) with
+    // a TLS InvalidContentType error. Only an explicit http:// scheme
+    // disables it; https:// (and scheme-less hosts) keep TLS on.
+    let backend_tls = if host.starts_with("http://") {
+        ""
+    } else {
+        "backendTLS: {}\n"
+    };
+
     let content = format!(
         "\
 provider:
@@ -352,12 +363,12 @@ pathOverride: \"{path_override}\"
 backendAuth:
   key:
     env: \"{env_var}\"
-backendTLS: {{}}
-",
+{backend_tls}",
         provider_type = provider_type,
         hostname = hostname,
         path_override = path_override,
         env_var = env_var,
+        backend_tls = backend_tls,
     );
 
     let path = provider_dir.join("_provider.yaml");
