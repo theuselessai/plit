@@ -410,20 +410,52 @@ fn model_slug(model_name: &str) -> String {
 }
 
 /// Derive a provider name from a base URL (e.g., "https://api.venice.ai/api/v1" -> "venice").
+///
+/// The result is always a valid environment-variable identifier component
+/// (lowercase `[a-z0-9_]`, never leading with a digit) so that IP-based and
+/// local backends work — e.g. "http://192.168.0.73:8080/v1" -> "p_192_168_0_73",
+/// "http://localhost:11434" -> "localhost". A bare octet like "0" used to leak
+/// through and produce an invalid `0_API_KEY` env var, breaking gateway startup.
 fn provider_name_from_url(url: &str) -> String {
-    url.trim_end_matches('/')
+    // Host without scheme, path, or port.
+    let host = url
+        .trim_end_matches('/')
         .split("://")
         .nth(1)
         .unwrap_or(url)
         .split('/')
         .next()
-        .unwrap_or("custom")
-        .split('.')
-        .rev()
-        .nth(1) // second-level domain
-        .unwrap_or("custom")
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("");
+
+    // Real multi-label hostnames -> second-level domain (api.openai.com -> openai).
+    // IPs and single-label hosts -> use the whole host (localhost, 192.168.0.73).
+    let labels: Vec<&str> = host.split('.').filter(|s| !s.is_empty()).collect();
+    let is_ip = !labels.is_empty()
+        && host
+            .split('.')
+            .all(|l| !l.is_empty() && l.bytes().all(|b| b.is_ascii_digit()));
+    let raw = if is_ip || labels.len() < 2 {
+        host
+    } else {
+        labels[labels.len() - 2]
+    };
+
+    // Sanitize into a valid identifier component.
+    let mut name: String = raw
         .to_lowercase()
-        .replace('-', "_")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    if name.is_empty() {
+        name = "custom".to_string();
+    }
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        name = format!("p_{name}");
+    }
+    name
 }
 
 /// Extract host:port from a URL. Adds default port if missing (443 for https, 80 for http).
