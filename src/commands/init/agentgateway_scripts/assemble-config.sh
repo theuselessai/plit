@@ -8,6 +8,7 @@
 #     _provider.yaml                → shared config (host, path, auth, TLS)
 #     <model>.yaml                  → one file per model (just "model: <name>")
 #   config.d/rules/*.yaml           → CEL authorization rules (merged into backends)
+#   config.d/policies/rate-limit.yaml → localRateLimit specs applied to every LLM route (optional)
 #   config.d/mcp_servers/*.yaml     → MCP server targets (injected into MCP listener)
 #   config.d/jwt/jwks.json          → JWT public key (referenced by llm listener)
 #
@@ -33,6 +34,24 @@ for f in "$CONFIG_D"/rules/*.yaml; do
         select(fileIndex == 0) + select(fileIndex == 1)
     ' - "$f")
 done
+
+# --- Step 2b: Load local rate limit policy (optional) ---
+# config.d/policies/rate-limit.yaml holds an array of agentgateway
+# RateLimitSpec entries (schema verified against agentgateway v1.0.1:
+# maxTokens / tokensPerFill / fillInterval / type: requests|tokens).
+# They are applied to EVERY LLM route as policies.localRateLimit — a
+# generous runaway-spend guard. Delete the file OR comment out its
+# entries to disable entirely.
+#
+# Emit JSON with a `// []` fallback so that an empty, null, or
+# comment-only file collapses to "[]" (comments do not survive JSON
+# encoding). Without this, a comment-only file would echo the comments
+# and inject `localRateLimit: null`, which agentgateway rejects at
+# startup — bricking the hard-boot dependency.
+rate_limit="[]"
+if [ -f "$CONFIG_D/policies/rate-limit.yaml" ]; then
+    rate_limit=$($YQ eval '. // []' -o=json "$CONFIG_D/policies/rate-limit.yaml")
+fi
 
 # --- Step 3: Add listeners as binds ---
 for f in "$CONFIG_D"/listeners/*.yaml; do
@@ -120,6 +139,16 @@ for provider_dir in "$CONFIG_D"/backends/*/; do
             select(fileIndex == 0).policies.authorization.rules = select(fileIndex == 1)
             | select(fileIndex == 0)
         ' - <(echo "$rules"))
+
+        # Inject local rate limits (per-route token bucket, local state).
+        # Skipped when config.d/policies/rate-limit.yaml is absent or empty,
+        # so installs without the fragment keep the previous behaviour.
+        if [ -n "$rate_limit" ] && [ "$rate_limit" != "[]" ] && [ "$rate_limit" != "null" ]; then
+            route=$(echo "$route" | $YQ eval-all '
+                select(fileIndex == 0).policies.localRateLimit = select(fileIndex == 1)
+                | select(fileIndex == 0)
+            ' - <(echo "$rate_limit"))
+        fi
 
         # Append to LLM listener routes
         merged=$(echo "$merged" | $YQ eval-all '

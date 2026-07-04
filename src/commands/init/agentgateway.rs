@@ -39,6 +39,7 @@ pub async fn bootstrap(inputs: &UserInputs) -> Result<AgentgatewaySetup> {
         "config.d/listeners",
         "config.d/backends",
         "config.d/rules",
+        "config.d/policies",
         "config.d/mcp_servers",
         "keys",
     ];
@@ -63,6 +64,7 @@ pub async fn bootstrap(inputs: &UserInputs) -> Result<AgentgatewaySetup> {
     write_llm_listener_yaml(&agw_dir)?;
     write_mcp_listener_yaml(&agw_dir)?;
     write_rules(&agw_dir)?;
+    write_rate_limits(&agw_dir)?;
     output::status("  * Wrote config fragments");
 
     // Write shell scripts
@@ -216,6 +218,45 @@ fn write_rules(agw_dir: &Path) -> Result<()> {
     let user_path = agw_dir.join("config.d/rules/user.yaml");
     std::fs::write(&user_path, user)
         .with_context(|| format!("Failed to write {}", user_path.display()))
+}
+
+/// Write the default local rate-limit policy fragment.
+///
+/// assemble-config.sh injects these RateLimitSpec entries into EVERY LLM
+/// route as `policies.localRateLimit` (schema verified against agentgateway
+/// v1.0.1: `schema/config.json` + `examples/ratelimiting/local/config.yaml`
+/// at that tag). The defaults are deliberately generous — a guard against
+/// runaway autonomous agent loops, not a throttle on legitimate long runs.
+///
+/// The file is only written if absent so operator tuning survives re-init.
+/// Deleting the file (and reassembling) disables rate limiting entirely.
+fn write_rate_limits(agw_dir: &Path) -> Result<()> {
+    let path = agw_dir.join("config.d/policies/rate-limit.yaml");
+    if path.exists() {
+        return Ok(());
+    }
+    let content = "\
+# Local rate limits applied to every LLM route (token bucket per route,
+# state local to the gateway). Generous starter defaults: stop runaway
+# agent loops without disturbing long legitimate agent runs.
+#
+# Schema (agentgateway v1.0.1 RateLimitSpec):
+#   maxTokens     - bucket capacity (burst)
+#   tokensPerFill - added every fillInterval (sustained rate)
+#   fillInterval  - duration string, e.g. 60s
+#   type          - 'requests' (HTTP requests) or 'tokens' (LLM tokens)
+#
+# Tune per install; delete this file to disable rate limiting.
+- maxTokens: 600
+  tokensPerFill: 300
+  fillInterval: 60s
+  type: requests
+- maxTokens: 400000
+  tokensPerFill: 200000
+  fillInterval: 60s
+  type: tokens
+";
+    std::fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
 }
 
 // --- Shell script writers ---
