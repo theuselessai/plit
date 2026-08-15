@@ -40,9 +40,18 @@ RUN python3 -m venv /root/.local/share/plit/venv && \
         -r /root/.local/share/plit/pipelit/platform/requirements.txt && \
     /root/.local/share/plit/venv/bin/pip install --no-cache-dir honcho
 
+# Dragonfly release to bundle. Pinned rather than resolved from
+# api.github.com/.../releases/latest at build time: that call is
+# unauthenticated, and its 60 req/hr budget is per-IP and pooled across every
+# job sharing a GitHub Actions runner IP. When it is exhausted the API returns
+# an error body with no tag_name, which surfaced as a bare KeyError and failed
+# the build. Pinning also makes the image reproducible — a new upstream release
+# no longer silently changes what CI tested.
+# Override with: docker build --build-arg DRAGONFLY_VERSION=vX.Y.Z
+ARG DRAGONFLY_VERSION=v1.40.1
+
 RUN ARCH=$(uname -m) && \
-    VERSION=$(curl -sS https://api.github.com/repos/dragonflydb/dragonfly/releases/latest | python3 -c "import json,sys;print(json.load(sys.stdin)['tag_name'])") && \
-    curl -fSL "https://github.com/dragonflydb/dragonfly/releases/download/${VERSION}/dragonfly-${ARCH}.tar.gz" | tar xz -C /root/.config/plit && \
+    curl -fSL "https://github.com/dragonflydb/dragonfly/releases/download/${DRAGONFLY_VERSION}/dragonfly-${ARCH}.tar.gz" | tar xz -C /root/.config/plit && \
     mv "/root/.config/plit/dragonfly-${ARCH}" /root/.config/plit/dragonfly && \
     chmod +x /root/.config/plit/dragonfly
 
