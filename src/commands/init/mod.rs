@@ -1,3 +1,4 @@
+mod agentgateway;
 pub(crate) mod config;
 mod docker;
 mod install;
@@ -133,7 +134,13 @@ pub async fn run(args: InitArgs) -> Result<()> {
     // 19b. Drop management markers so uninstall can detect plit-managed dirs
     config::write_managed_markers()?;
 
-    // 20. Done
+    // 20. Bootstrap agentgateway config structure + ES256 keypair
+    output::status("Setting up agentgateway...");
+    let agw_setup = agentgateway::bootstrap(&inputs).await?;
+    config::append_agentgateway_env(&agw_setup)?;
+    output::status("");
+
+    // 21. Done
     let config_path = config::config_json_path()?;
     let env_display = config::dot_env_path()?;
     let pipelit_display = config::pipelit_dir()?;

@@ -55,10 +55,21 @@ RUN ARCH=$(uname -m) && \
     mv "/root/.config/plit/dragonfly-${ARCH}" /root/.config/plit/dragonfly && \
     chmod +x /root/.config/plit/dragonfly
 
+# Download agentgateway binary
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    curl -fSL "https://github.com/agentgateway/agentgateway/releases/download/v1.0.1/agentgateway-linux-${ARCH}" \
+      -o /usr/local/bin/agentgateway && \
+    chmod +x /usr/local/bin/agentgateway
+
+# Install yq for config assembly
+RUN curl -fSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" \
+      -o /usr/local/bin/yq && \
+    chmod +x /usr/local/bin/yq
+
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 8080 8000
+EXPOSE 8080 8000 4000 3000 15000
 
 VOLUME ["/root/.local/share/plit", "/root/.config/pipelit/workspaces"]
 

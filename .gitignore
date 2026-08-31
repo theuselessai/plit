@@ -1,3 +1,6 @@
 /target
 pipelit-client/target
 .sisyphus/
+
+.env
+.omc/
